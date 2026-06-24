@@ -330,11 +330,16 @@ def parse_measuring_log(path: str, max_points: int = 2000) -> MeasuringLog:
     time_cols: List[int] = []
     for j in range(n_cols):
         vals = [v for v in columns[j] if v is not None]
-        labelled_time = _header_label(j) in {"time"}
         if not vals:
             continue
-        if labelled_time and len(vals) >= 2:
+        label = _header_label(j)
+        name = _clean_name(names_row[j]) if (names_row and j < len(names_row)) else ""
+        if label == "time" and len(vals) >= 2:
             time_cols.append(j)
+            continue
+        if name:
+            # A column with a real channel name is never an inferred time axis;
+            # only explicit "TIME" headers (handled above) qualify.
             continue
         if _looks_like_time(columns[j]):
             time_cols.append(j)
