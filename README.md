@@ -127,8 +127,13 @@ vcds-obd-log --list-ports                # list candidate ELM327 ports
 ## Launching the GUI
 
 ```powershell
-vcds-gui
+vcds-gui                # or:  python -m vcds_gui
 ```
+
+**No-Python install for end users:** a self-contained Windows installer can be
+built with [`installer/build_installer.ps1`](installer/) (PyInstaller + Inno
+Setup) — see [`installer/README.md`](installer/README.md). Tagged releases ship
+the `VCDS-Toolkit-Setup-<version>.exe` automatically.
 
 - **File Analyzer tab** — open a measuring CSV (and optionally an Auto-Scan),
   toggle channels on/off, run event detection, click an event to jump the cursor

@@ -77,11 +77,19 @@ jobs:
           python -m build
           ls -l dist
 
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: .\installer\build_installer.ps1 -Python python
+
       - name: Create GitHub Release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$TAG" dist/* \
+          gh release create "$TAG" dist/*.whl dist/*.tar.gz installer/Output/*.exe \
             --title "$TAG" \
             --generate-notes
