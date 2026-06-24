@@ -201,6 +201,24 @@ gracefully when none is connected): `list_serial_ports`, `obd_status`,
 
 ---
 
+## Releases
+
+Releases are cut by GitHub Actions (`.github/workflows/release.yml`). On a
+version tag push it runs the full test suite, builds the wheel + sdist, and
+publishes a GitHub Release with those artifacts and auto-generated notes.
+
+The tag must match the `version` in `pyproject.toml` (single source of truth):
+
+```powershell
+# 1. bump version in pyproject.toml, commit it
+# 2. tag and push:
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+You can also trigger it manually from the **Actions → Release** tab and supply a
+tag. The workflow fails fast if the tag and `pyproject.toml` version disagree.
+
 ## Project layout
 
 ```

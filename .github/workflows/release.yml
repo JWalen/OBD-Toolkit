@@ -1,0 +1,87 @@
+name: Release
+
+# Cut a release by pushing a version tag, e.g.:
+#     git tag v0.1.0 && git push origin v0.1.0
+# The tag MUST match the version in pyproject.toml (single source of truth).
+# You can also run this manually from the Actions tab and supply a tag.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.1.0). Created if it does not exist."
+        required: true
+
+# Needed for `gh release create` to push the release/tag.
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Resolve tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "Releasing tag: $TAG"
+
+      - name: Install project + tooling
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip build
+          pip install -e ".[dev]"
+
+      - name: Verify tag matches pyproject version
+        shell: bash
+        run: |
+          VER=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          TAG_VER="${TAG#v}"
+          echo "tag=$TAG_VER  pyproject=$VER"
+          if [ "$TAG_VER" != "$VER" ]; then
+            echo "::error::Tag '$TAG_VER' does not match pyproject version '$VER'. Bump the version or fix the tag."
+            exit 1
+          fi
+
+      - name: Run test suite
+        shell: bash
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: pytest -q
+
+      - name: Build sdist + wheel
+        shell: bash
+        run: |
+          python -m build
+          ls -l dist
+
+      - name: Create GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TAG" dist/* \
+            --title "$TAG" \
+            --generate-notes
