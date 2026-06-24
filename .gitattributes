@@ -1,0 +1,12 @@
+# Normalize line endings: keep LF in the repo, let Git handle the working tree.
+* text=auto eol=lf
+
+# Windows-specific files keep CRLF.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Treat sample/log and binary assets as-is.
+*.png binary
+*.jpg binary
+*.ico binary

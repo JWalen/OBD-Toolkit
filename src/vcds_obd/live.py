@@ -311,6 +311,16 @@ class LiveLogger:
         """
         os.makedirs(self.logs_dir, exist_ok=True)
         duration_s = min(float(duration_s), float(MAX_SESSION_SECONDS))
+
+        # For an Async connection, watch the selected commands up front so the
+        # background poller has values ready; a no-op for blocking/raw adapters.
+        watcher = getattr(self.conn, "watch", None)
+        if callable(watcher):
+            try:
+                watcher([c.command_name for c in self.channels if c.command_name])
+            except Exception:  # noqa: BLE001
+                pass
+
         if session_name is None:
             session_name = "OBD_" + time.strftime("%Y%m%d_%H%M%S")
         session_path = os.path.join(self.logs_dir, session_name + ".CSV")
@@ -543,6 +553,143 @@ class PyOBDConnection:
             pass
 
 
+class RawELM327Connection:
+    """Last-resort raw ELM327 driver over pyserial (AT init + mode-01 PIDs).
+
+    Use only when python-OBD cannot initialise the adapter. This speaks ELM327
+    AT commands directly and decodes the standard OBD-II PIDs in our default set.
+    VAG-specific channels remain unavailable — a generic ELM327 cannot read them.
+
+    The serial object is injectable (``serial_obj``) so the protocol decoding can
+    be unit-tested without hardware.
+    """
+
+    # name -> (mode-01 PID hex, data byte count, decoder)
+    _PIDS = {
+        "ENGINE_LOAD": ("04", 1, lambda b: b[0] * 100.0 / 255.0),
+        "COOLANT_TEMP": ("05", 1, lambda b: b[0] - 40.0),
+        "SHORT_FUEL_TRIM_1": ("06", 1, lambda b: (b[0] - 128) * 100.0 / 128.0),
+        "LONG_FUEL_TRIM_1": ("07", 1, lambda b: (b[0] - 128) * 100.0 / 128.0),
+        "INTAKE_PRESSURE": ("0B", 1, lambda b: float(b[0])),
+        "RPM": ("0C", 2, lambda b: (b[0] * 256 + b[1]) / 4.0),
+        "SPEED": ("0D", 1, lambda b: float(b[0])),
+        "TIMING_ADVANCE": ("0E", 1, lambda b: b[0] / 2.0 - 64.0),
+        "INTAKE_TEMP": ("0F", 1, lambda b: b[0] - 40.0),
+        "MAF": ("10", 2, lambda b: (b[0] * 256 + b[1]) / 100.0),
+        "THROTTLE_POS": ("11", 1, lambda b: b[0] * 100.0 / 255.0),
+        "BAROMETRIC_PRESSURE": ("33", 1, lambda b: float(b[0])),
+    }
+
+    def __init__(self, port: Optional[str] = None, baud: Optional[int] = None,
+                 timeout: float = 1.0, serial_obj=None):
+        if serial_obj is not None:
+            self._ser = serial_obj
+        else:
+            import serial  # lazy: pyserial only needed for the raw path
+
+            self._ser = serial.Serial(port, baudrate=int(baud or 38400), timeout=timeout)
+        self._init_elm()
+
+    # -- low-level transport ------------------------------------------------ #
+    def _transact(self, cmd: str) -> str:
+        try:
+            self._ser.reset_input_buffer()
+        except Exception:  # noqa: BLE001
+            pass
+        self._ser.write((cmd + "\r").encode("ascii"))
+        raw = self._ser.read_until(b">")
+        return raw.decode("ascii", errors="ignore")
+
+    def _init_elm(self) -> None:
+        for cmd in ("ATZ", "ATE0", "ATL0", "ATS0", "ATSP0"):
+            try:
+                self._transact(cmd)
+            except Exception:  # noqa: BLE001
+                pass
+
+    @staticmethod
+    def _hex_bytes(text: str) -> List[int]:
+        import re
+
+        return [int(tok, 16) for tok in re.findall(r"\b[0-9A-Fa-f]{2}\b", text)]
+
+    def _extract(self, text: str, resp_mode: int, pid: int, nbytes: int) -> Optional[List[int]]:
+        toks = self._hex_bytes(text)
+        for i in range(len(toks) - 1):
+            if toks[i] == resp_mode and toks[i + 1] == pid:
+                data = toks[i + 2 : i + 2 + nbytes]
+                if len(data) == nbytes:
+                    return data
+        return None
+
+    # -- Connection protocol ------------------------------------------------ #
+    def supported(self) -> "set[str]":
+        supported_pids: "set[int]" = set()
+        for base in (0x00, 0x20, 0x40):
+            data = self._extract(self._transact("01" + format(base, "02X")), 0x41, base, 4)
+            if not data:
+                continue
+            bits = (data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3]
+            for i in range(32):
+                if bits & (1 << (31 - i)):
+                    supported_pids.add(base + i + 1)
+        names = {name for name, (ph, _n, _f) in self._PIDS.items() if int(ph, 16) in supported_pids}
+        # If the probe yielded nothing (some clones refuse it), fall back to the
+        # full known set; unsupported PIDs simply read as None at query time.
+        return names or set(self._PIDS.keys())
+
+    def query_value(self, command_name: str) -> Optional[float]:
+        spec = self._PIDS.get(command_name)
+        if spec is None:
+            return None
+        pidhex, nbytes, decode = spec
+        data = self._extract(self._transact("01" + pidhex), 0x41, int(pidhex, 16), nbytes)
+        if data is None:
+            return None
+        try:
+            return float(decode(data))
+        except Exception:  # noqa: BLE001
+            return None
+
+    @staticmethod
+    def _decode_dtc(b1: int, b2: int) -> str:
+        letter = "PCBU"[(b1 & 0xC0) >> 6]
+        return (
+            f"{letter}{(b1 & 0x30) >> 4}{format(b1 & 0x0F, 'X')}"
+            f"{format((b2 & 0xF0) >> 4, 'X')}{format(b2 & 0x0F, 'X')}"
+        )
+
+    def get_dtcs(self) -> List[Tuple[str, str]]:
+        toks = self._hex_bytes(self._transact("03"))
+        out: List[Tuple[str, str]] = []
+        if 0x43 in toks:
+            i = toks.index(0x43) + 1
+            pairs = toks[i:]
+            for j in range(0, len(pairs) - 1, 2):
+                b1, b2 = pairs[j], pairs[j + 1]
+                if b1 == 0 and b2 == 0:
+                    continue
+                out.append((self._decode_dtc(b1, b2), ""))
+        return out
+
+    def clear_dtcs(self) -> bool:
+        """Clear stored DTCs. EXPLICIT user action only — never call automatically."""
+        resp = self._transact("04")
+        return "44" in resp or "OK" in resp.upper()
+
+    def status(self) -> str:
+        return "Raw ELM327 (pyserial)"
+
+    def protocol(self) -> str:
+        return self._transact("ATDPN").strip() or "unknown"
+
+    def close(self) -> None:
+        try:
+            self._ser.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def scan_ports() -> List[str]:
     """Discover candidate serial ports for an ELM327 adapter."""
     try:
@@ -564,13 +711,28 @@ def connect(
     port: Optional[str] = None,
     baud: Optional[int] = None,
     prefer_async: bool = True,
-) -> PyOBDConnection:
-    """Connect to an ELM327 via python-OBD (Async preferred, blocking fallback).
+    prefer: str = "library",
+):
+    """Connect to an ELM327, trying python-OBD first and raw AT as last resort.
 
-    Clones vary in baud (38400 / 9600 / 115200); pass ``baud`` to override.
-    Raises whatever the underlying library raises if no adapter is reachable.
+    Args:
+        port: Serial port (e.g. ``COM5``). Auto-scanned by the library if None.
+        baud: Baud override for clones (38400 / 9600 / 115200).
+        prefer_async: Use ``obd.Async`` when possible (falls back to blocking).
+        prefer: ``"library"`` (default) tries python-OBD then falls back to the
+            raw pyserial driver; ``"raw"`` forces the raw driver (needs a port).
+
+    Returns:
+        A connection implementing the :class:`Connection` protocol.
     """
-    return PyOBDConnection(port=port, baud=baud, prefer_async=prefer_async)
+    if prefer == "raw":
+        return RawELM327Connection(port=port, baud=baud)
+    try:
+        return PyOBDConnection(port=port, baud=baud, prefer_async=prefer_async)
+    except Exception:  # noqa: BLE001 - last-resort raw AT path
+        if not port:
+            raise
+        return RawELM327Connection(port=port, baud=baud)
 
 
 # --------------------------------------------------------------------------- #
@@ -586,6 +748,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p.add_argument("--rate", type=float, default=5.0, help="Sample rate in Hz (default 5).")
     p.add_argument("--logs-dir", default=os.environ.get("VCDS_LOGS_DIR", r"C:\Ross-Tech\VCDS\Logs"))
     p.add_argument("--list-ports", action="store_true", help="List candidate ports and exit.")
+    p.add_argument("--raw", action="store_true", help="Force the raw pyserial ELM327 driver.")
     args = p.parse_args(argv)
 
     if args.list_ports:
@@ -596,7 +759,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 0
 
     try:
-        conn = connect(port=args.port, baud=args.baud)
+        conn = connect(port=args.port, baud=args.baud, prefer="raw" if args.raw else "library")
     except Exception as exc:  # noqa: BLE001
         print(f"Could not connect to an ELM327 adapter: {exc}", file=sys.stderr)
         return 2

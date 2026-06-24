@@ -303,13 +303,19 @@ def parse_measuring_log(path: str, max_points: int = 2000) -> MeasuringLog:
     def _row_wordiness(hr: Sequence[str]) -> int:
         return sum(_cell_wordiness(c) for c in hr if _clean_name(c))
 
+    # VCDS always lays channel NAMES above UNITS, so row order is the most
+    # reliable signal for the common 1- or 2-row header. Wordiness is only a
+    # fallback when an unusual file has 3+ header rows.
     names_row: Optional[List[str]] = None
     units_row: Optional[List[str]] = None
-    if naming_rows:
-        ranked = sorted(naming_rows, key=_row_wordiness, reverse=True)
-        names_row = ranked[0]
-        if len(ranked) > 1:
-            units_row = ranked[1]
+    if len(naming_rows) == 1:
+        names_row = naming_rows[0]
+    elif len(naming_rows) == 2:
+        names_row, units_row = naming_rows[0], naming_rows[1]
+    elif len(naming_rows) >= 3:
+        names_row = max(naming_rows, key=_row_wordiness)
+        others = [r for r in naming_rows if r is not names_row]
+        units_row = min(others, key=_row_wordiness) if others else None
 
     # group labels carried forward across columns (classic group logs)
     group_for_col: List[Optional[str]] = [None] * n_cols
