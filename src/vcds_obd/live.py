@@ -21,6 +21,7 @@ import argparse
 import csv
 import os
 import sys
+import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -284,12 +285,18 @@ class LiveLogger:
         self.clock = clock or time.monotonic
         self.sleep = sleep or time.sleep
         self.dtc_poll_s = dtc_poll_s
+        self._stop = threading.Event()
+
+    def stop(self) -> None:
+        """Request the running capture loop to finish early (thread-safe)."""
+        self._stop.set()
 
     def run(
         self,
         duration_s: float,
         trigger: Optional[Trigger] = None,
         session_name: Optional[str] = None,
+        on_sample: Optional[Callable[[float, Dict[str, Optional[float]], str], None]] = None,
     ) -> SessionResult:
         """Record for a capped duration, writing a session CSV (+ any captures).
 
@@ -326,7 +333,7 @@ class LiveLogger:
         while True:
             now = self.clock()
             t = now - start
-            if t > duration_s:
+            if t > duration_s or self._stop.is_set():
                 break
 
             values = read_row(self.conn, self.channels)
@@ -370,6 +377,8 @@ class LiveLogger:
             row = (marker, t, values)
             ring.append(row)
             all_rows.append(row)
+            if on_sample is not None:
+                on_sample(t, values, marker)
             if cap_rows is not None:
                 cap_rows.append(row)
                 if t >= cap_end:
