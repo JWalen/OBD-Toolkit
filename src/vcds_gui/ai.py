@@ -170,8 +170,14 @@ SYSTEM_PREAMBLE = (
 )
 
 
-def vehicle_system_prompt(context: str) -> str:
-    """Wrap a diagnostic-context string in the assistant system prompt."""
+def vehicle_system_prompt(context: str, persona: Optional[str] = None) -> str:
+    """Wrap a diagnostic-context string in the assistant system prompt.
+
+    Args:
+        context: The current vehicle data block (may be empty).
+        persona: Brand-specific system preamble (defaults to a generic one).
+    """
+    preamble = persona or SYSTEM_PREAMBLE
     if not context:
-        return SYSTEM_PREAMBLE + "\n\n(No vehicle data has been loaded yet.)"
-    return SYSTEM_PREAMBLE + "\n\n--- CURRENT VEHICLE DATA ---\n" + context
+        return preamble + "\n\n(No vehicle data has been loaded yet.)"
+    return preamble + "\n\n--- CURRENT VEHICLE DATA ---\n" + context

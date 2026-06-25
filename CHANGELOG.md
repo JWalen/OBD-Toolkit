@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-06-25
+
+### Added
+- **Vehicle/brand profiles** (`vcds_core.profiles`): **VAG**, **Ford** and
+  **Generic OBD-II**. Choose one via **View → Vehicle profile**. The profile
+  selects brand-specific known-issue notes and the AI assistant's persona, while
+  the standard fault codes and data heuristics stay universal — so the live
+  side, gauges, performance and generic-code diagnosis already work on any
+  OBD-II vehicle. (First step toward full multi-brand support.)
+
+### Changed
+- The app's display name is now the brand-neutral **"OBD Toolkit"** (window
+  title / About). Internal package, repo and installer identifiers are unchanged
+  so auto-update and the MCP integration keep working.
+- Diagnosis (`diagnose(..., profile=...)`) and the AI assistant are now
+  brand-aware; VAG-flavored per-code notes only appear under the VAG profile.
+
 ## [0.10.0] - 2026-06-24
 
 ### Added
@@ -181,7 +198,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.11.0
 [0.10.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.10.0
 [0.9.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.9.0
 [0.8.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.8.0

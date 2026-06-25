@@ -18,6 +18,7 @@ from typing import List, Optional
 from . import knowledge
 from ._dtc_data import SEVERITY_ORDER
 from .parse import AutoScan, MeasuringLog
+from .profiles import Profile, get_profile
 
 # Standard OBD code embedded in a VCDS fault's status-detail line (e.g. "P2196").
 _PCODE_RE = re.compile(r"\b([PUBC][0-9]{4})\b")
@@ -61,7 +62,7 @@ class DiagnosticReport:
         return f"{n} finding(s); most severe: {worst.severity.upper()} — {worst.title}"
 
 
-def _fault_findings(scan: AutoScan) -> List[Finding]:
+def _fault_findings(scan: AutoScan, profile: Profile) -> List[Finding]:
     out: List[Finding] = []
     for module in scan.modules:
         for fault in module.faults:
@@ -93,7 +94,7 @@ def _fault_findings(scan: AutoScan) -> List[Finding]:
             detail = f"Module {module.address} ({module.name})."
             if fault.status_detail:
                 detail += f" Status: {fault.status_detail}."
-            if k.notes:
+            if k.notes and profile.code_notes:  # bundled notes are VAG-flavored
                 detail += f" {k.notes}"
 
             out.append(
@@ -118,7 +119,8 @@ def _chan_max(log: MeasuringLog, *substrings):
     return None
 
 
-def _data_findings(log: MeasuringLog) -> List[Finding]:
+def _data_findings(log: MeasuringLog, profile: Profile) -> List[Finding]:
+    issues = profile.known_issues
     out: List[Finding] = []
 
     # --- fuel trims: lean / rich ------------------------------------------- #
@@ -128,7 +130,7 @@ def _data_findings(log: MeasuringLog) -> List[Finding]:
             sev = "high" if ltft.max > 20 else "medium"
             detail = (
                 f"Long-term fuel trim reached +{ltft.max:.0f}% — the ECU is adding fuel to "
-                "compensate for a lean condition. " + (knowledge.known_issue("pcv_failure") or "")
+                "compensate for a lean condition. " + issues.get("pcv_failure", "")
             )
             out.append(Finding(sev, "Lean fuel trims", detail, "data",
                                ["Intake/vacuum leak", "Failing PCV / crankcase breather",
@@ -154,7 +156,7 @@ def _data_findings(log: MeasuringLog) -> List[Finding]:
                            evidence=f"max {ect.max:.0f}{_u(ect)}"))
 
     # --- target vs actual shortfall (boost, etc.) -------------------------- #
-    div = _divergence_finding(log)
+    div = _divergence_finding(log, issues)
     if div is not None:
         out.append(div)
 
@@ -169,7 +171,7 @@ def _data_findings(log: MeasuringLog) -> List[Finding]:
         vals = s["value"]
         if vals[-1] > vals[0] and all(vals[i + 1] >= vals[i] - 1e-9 for i in range(len(vals) - 1)):
             detail = (f"{ch.name} climbed from {vals[0]:.0f} to {vals[-1]:.0f}. "
-                      + (knowledge.known_issue("carbon_buildup") or ""))
+                      + issues.get("carbon_buildup", ""))
             out.append(Finding("high", "Misfire / fault counter increasing", detail, "data",
                                ["Worn spark plugs", "Failing ignition coil",
                                 "Carbon build-up on intake valves", "Low fuel pressure"],
@@ -186,7 +188,7 @@ def _data_findings(log: MeasuringLog) -> List[Finding]:
     return out
 
 
-def _divergence_finding(log: MeasuringLog) -> Optional[Finding]:
+def _divergence_finding(log: MeasuringLog, issues: dict) -> Optional[Finding]:
     spec = actual = None
     for c in log.channels:
         n = c.name.lower()
@@ -216,7 +218,7 @@ def _divergence_finding(log: MeasuringLog) -> Optional[Finding]:
     return Finding(
         sev, "Actual value falls short of target",
         f"{actual.name} fell {worst:.0f}{_u(actual)} below {spec.name} "
-        f"(~{rel * 100:.0f}%) at t={worst_t:.1f}s. " + (knowledge.known_issue("diverter_valve") or ""),
+        f"(~{rel * 100:.0f}%) at t={worst_t:.1f}s. " + issues.get("diverter_valve", ""),
         "data",
         ["Charge-pipe / boost leak", "Failed diverter (bypass) valve",
          "Faulty N75 boost-control valve", "Wastegate actuator", "Cracked intercooler"],
@@ -258,21 +260,25 @@ def _num(x) -> str:
     return "?" if x is None else (f"{x:.1f}" if isinstance(x, float) else str(x))
 
 
-def diagnose(scan: Optional[AutoScan] = None, log: Optional[MeasuringLog] = None) -> DiagnosticReport:
+def diagnose(scan: Optional[AutoScan] = None, log: Optional[MeasuringLog] = None,
+             profile="vag") -> DiagnosticReport:
     """Build a prioritized diagnostic report from a scan and/or measuring log.
 
     Args:
         scan: Optional parsed Auto-Scan.
         log: Optional parsed measuring log.
+        profile: Vehicle/brand profile id (e.g. "vag", "ford", "generic") or a
+            Profile — selects brand-specific known-issue notes.
 
     Returns:
         A :class:`DiagnosticReport` with findings sorted most-severe first.
     """
+    prof = get_profile(profile)
     findings: List[Finding] = []
     if scan is not None:
-        findings.extend(_fault_findings(scan))
+        findings.extend(_fault_findings(scan, prof))
     if log is not None:
-        findings.extend(_data_findings(log))
+        findings.extend(_data_findings(log, prof))
 
     findings.sort(key=lambda f: (-f.severity_rank, f.category, f.title))
 

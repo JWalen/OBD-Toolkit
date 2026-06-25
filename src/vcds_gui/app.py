@@ -27,7 +27,7 @@ import time
 from typing import Dict, List, Optional, Tuple
 
 from vcds_core import compare as compare_mod
-from vcds_core import compute, knowledge, parse, perform
+from vcds_core import compute, knowledge, parse, perform, profiles
 from vcds_core.diagnose import diagnose as run_diagnose
 from vcds_core.diagnose import report_to_text
 from vcds_core.report import build_html_report
@@ -479,7 +479,9 @@ if _HAVE_QT:
                     self, "Diagnose", "Open a measuring CSV and/or an Auto-Scan first."
                 )
                 return
-            report = run_diagnose(scan=self.scan, log=self.mlog)
+            prof = QtCore.QSettings("DeltaModTech", "VCDS Toolkit").value(
+                "ui/profile", profiles.DEFAULT_PROFILE, type=str)
+            report = run_diagnose(scan=self.scan, log=self.mlog, profile=prof)
             plot_png = None
             if self.mlog is not None:
                 try:
@@ -1926,7 +1928,9 @@ if _HAVE_QT:
             self.btn_send.setEnabled(False)
             self.conversation.append("<p style='color:#718096'><i>Thinking…</i></p>")
 
-            system = ai.vehicle_system_prompt(self._build_context())
+            prof = profiles.get_profile(
+                self.settings.value("ui/profile", profiles.DEFAULT_PROFILE, type=str))
+            system = ai.vehicle_system_prompt(self._build_context(), persona=prof.ai_persona)
             self._thread = QtCore.QThread()
             self._worker = AiChatWorker(pid, key, model, system, list(self.history))
             self._worker.moveToThread(self._thread)
@@ -1959,7 +1963,7 @@ if _HAVE_QT:
             from vcds_core import __version__ as _ver
 
             self._version = _ver
-            self.setWindowTitle(f"VCDS Toolkit v{_ver}")
+            self.setWindowTitle(f"OBD Toolkit v{_ver}")
             icon = _find_app_icon()
             if icon:
                 self.setWindowIcon(QtGui.QIcon(icon))
@@ -2005,6 +2009,18 @@ if _HAVE_QT:
             self.act_dark.setChecked(self.settings.value("ui/dark", False, type=bool))
             self.act_dark.toggled.connect(self._toggle_theme)
             view_menu.addAction(self.act_dark)
+
+            prof_menu = view_menu.addMenu("Vehicle &profile")
+            self._profile_group = QtGui.QActionGroup(self)
+            current = self.settings.value("ui/profile", profiles.DEFAULT_PROFILE, type=str)
+            for pid, prof in profiles.PROFILES.items():
+                act = QtGui.QAction(prof.label, self)
+                act.setCheckable(True)
+                act.setChecked(pid == current)
+                act.setData(pid)
+                act.triggered.connect(lambda _checked, p=pid: self._set_profile(p))
+                self._profile_group.addAction(act)
+                prof_menu.addAction(act)
 
             tools_menu = self.menuBar().addMenu("&Tools")
             mcp_action = QtGui.QAction("Install &MCP Server (for Claude)…", self)
@@ -2062,6 +2078,14 @@ if _HAVE_QT:
             self.settings.setValue("ui/dark", on)
             self._apply_theme(on)
 
+        def _set_profile(self, pid: str):
+            self.settings.setValue("ui/profile", pid)
+            self.statusBar().showMessage(
+                f"Vehicle profile: {profiles.get_profile(pid).label}", 4000)
+
+        def current_profile(self) -> str:
+            return self.settings.value("ui/profile", profiles.DEFAULT_PROFILE, type=str)
+
         def show_mcp_install(self):
             McpInstallDialog(DEFAULT_LOGS_DIR, self).exec()
 
@@ -2086,12 +2110,13 @@ if _HAVE_QT:
         def show_about(self):
             QtWidgets.QMessageBox.about(
                 self,
-                "About VCDS Toolkit",
-                f"<b>VCDS Toolkit</b> v{self._version}<br>"
+                "About OBD Toolkit",
+                f"<b>OBD Toolkit</b> v{self._version}<br>"
                 "Analyze VCDS logs &amp; Auto-Scans and capture live ELM327 "
-                "OBD-II data.<br><br>"
-                "Reads the files VCDS writes; it does not control VCDS or the "
-                "HEX cable. Live data is from a generic ELM327 only.<br><br>"
+                "OBD-II data from any OBD-II vehicle.<br><br>"
+                "Brand-specific diagnosis is selected via "
+                "<b>View → Vehicle profile</b>. Live data is from a generic "
+                "ELM327; it does not control VCDS or the HEX cable.<br><br>"
                 '<a href="https://github.com/JWalen/VAGScanner">'
                 "github.com/JWalen/VAGScanner</a>",
             )

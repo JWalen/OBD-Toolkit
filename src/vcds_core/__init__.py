@@ -22,7 +22,7 @@ from .parse import (
     parse_autoscan,
     parse_measuring_log,
 )
-from . import compare, compute, knowledge, perform
+from . import compare, compute, knowledge, perform, profiles
 from .compare import compare_logs
 from .compute import add_computed_channels
 from .diagnose import DiagnosticReport, Finding, diagnose, report_to_text
