@@ -97,28 +97,71 @@ class Connection(Protocol):
     def protocol(self) -> str: ...
 
 
+# Display-unit hints for dynamically-offered standard PIDs (display only — the
+# value is logged regardless). python-OBD command names are the keys.
+_UNIT_HINTS = {
+    "FUEL_STATUS": "", "FUEL_PRESSURE": "kPa", "FUEL_RAIL_PRESSURE_VAC": "kPa",
+    "FUEL_RAIL_PRESSURE_DIRECT": "kPa", "FUEL_RAIL_PRESSURE_ABS": "kPa",
+    "FUEL_LEVEL": "%", "FUEL_RATE": "L/h", "ETHANOL_PERCENT": "%",
+    "SHORT_FUEL_TRIM_2": "%", "LONG_FUEL_TRIM_2": "%",
+    "COMMANDED_EGR": "%", "EGR_ERROR": "%", "EVAPORATIVE_PURGE": "%",
+    "WARMUPS_SINCE_DTC_CLEAR": "count", "DISTANCE_W_MIL": "km",
+    "DISTANCE_SINCE_DTC_CLEAR": "km", "RUN_TIME": "s", "RUN_TIME_MIL": "min",
+    "TIME_SINCE_DTC_CLEARED": "min", "CONTROL_MODULE_VOLTAGE": "V",
+    "ABSOLUTE_LOAD": "%", "COMMANDED_EQUIV_RATIO": "ratio",
+    "RELATIVE_THROTTLE_POS": "%", "ABSOLUTE_THROTTLE_POS_B": "%",
+    "ABSOLUTE_THROTTLE_POS_C": "%", "ACCELERATOR_POS_D": "%",
+    "ACCELERATOR_POS_E": "%", "ACCELERATOR_POS_F": "%", "THROTTLE_ACTUATOR": "%",
+    "AMBIANT_AIR_TEMP": "°C", "OIL_TEMP": "°C", "ENGINE_OIL_TEMP": "°C",
+    "CATALYST_TEMP_B1S1": "°C", "CATALYST_TEMP_B2S1": "°C",
+    "CATALYST_TEMP_B1S2": "°C", "CATALYST_TEMP_B2S2": "°C",
+    "RELATIVE_ACCEL_POS": "%", "HYBRID_BATTERY_REMAINING": "%",
+    "EVAP_VAPOR_PRESSURE": "Pa", "ABSOLUTE_FUEL_RAIL_PRESSURE": "kPa",
+}
+
+
+def _prettify(command_name: str) -> str:
+    """Turn a python-OBD command name into a readable channel name.
+
+    ``"FUEL_LEVEL"`` -> ``"Fuel Level"``; acronyms/codes like ``"O2_B1S1"`` are
+    preserved (``"O2 B1S1"``).
+    """
+    parts = []
+    for tok in command_name.split("_"):
+        if len(tok) <= 2 or any(ch.isdigit() for ch in tok):
+            parts.append(tok)
+        else:
+            parts.append(tok.capitalize())
+    return " ".join(parts)
+
+
 def build_channels(
     supported_names: "set[str]",
     selected: Optional[Sequence[str]] = None,
+    include_all: bool = False,
 ) -> List[LiveChannel]:
     """Resolve the channels to log, restricted to PIDs the ECU supports.
 
     Args:
         supported_names: command names the connection reports as supported.
         selected: optional subset of channel names or command names to keep.
+        include_all: also offer every *other* supported standard PID (beyond the
+            curated default set), built dynamically from what the ECU reports.
 
     Returns:
-        Ordered channels. A derived channel is only included when both of its
-        source channels are supported.
+        Ordered channels (curated first, then any extras). A derived channel is
+        only included when both of its source channels are supported.
     """
     chosen: List[LiveChannel] = []
     sel_lower = {s.lower() for s in selected} if selected else None
 
+    def _wanted(name: str, command: Optional[str]) -> bool:
+        if sel_lower is None:
+            return True
+        return name.lower() in sel_lower or (command is not None and command.lower() in sel_lower)
+
     for ch in DEFAULT_CHANNELS:
-        if sel_lower is not None and not (
-            ch.name.lower() in sel_lower
-            or (ch.command_name and ch.command_name.lower() in sel_lower)
-        ):
+        if not _wanted(ch.name, ch.command_name):
             continue
         if ch.command_name is not None:
             if ch.command_name in supported_names:
@@ -130,6 +173,18 @@ def build_channels(
             cb = DEFAULT_CHANNELS_BY_NAME.get(b)
             if ca and cb and ca.command_name in supported_names and cb.command_name in supported_names:
                 chosen.append(ch)
+
+    if include_all:
+        covered = {c.command_name for c in chosen if c.command_name}
+        for command in sorted(supported_names):
+            if command in DEFAULT_CHANNELS_BY_CMD or command in covered:
+                continue
+            name = _prettify(command)
+            if not _wanted(name, command):
+                continue
+            chosen.append(LiveChannel(name, _UNIT_HINTS.get(command, ""), command))
+            covered.add(command)
+
     return chosen
 
 

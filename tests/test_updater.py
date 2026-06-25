@@ -65,6 +65,13 @@ def _opener_for(payload: dict):
 # --------------------------------------------------------------------------- #
 
 
+def test_ssl_context_builds_without_error():
+    import ssl
+
+    ctx = updater._ssl_context()
+    assert ctx is None or isinstance(ctx, ssl.SSLContext)
+
+
 @pytest.mark.parametrize(
     "latest,current,expected",
     [

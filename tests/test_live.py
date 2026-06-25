@@ -150,3 +150,27 @@ def test_snapshot_returns_supported_values(tmp_path):
     assert "Engine RPM" in snap
     assert "Boost (derived)" in snap
     assert snap["Barometric Pressure"] == 100.0
+
+
+def test_prettify_names():
+    assert live._prettify("FUEL_LEVEL") == "Fuel Level"
+    assert live._prettify("O2_B1S1") == "O2 B1S1"
+    assert live._prettify("CONTROL_MODULE_VOLTAGE") == "Control Module Voltage"
+
+
+def test_build_channels_include_all_offers_extra_pids():
+    supported = set(live.DEFAULT_CHANNELS_BY_CMD) | {"FUEL_LEVEL", "CONTROL_MODULE_VOLTAGE", "O2_B1S1"}
+    curated = live.build_channels(supported)
+    full = live.build_channels(supported, include_all=True)
+    assert len(full) > len(curated)
+    names = {c.name for c in full}
+    assert "Fuel Level" in names and "O2 B1S1" in names
+    assert any(c.name == "Engine RPM" for c in full)  # curated still present
+    fl = next(c for c in full if c.name == "Fuel Level")
+    assert fl.command_name == "FUEL_LEVEL" and fl.unit == "%"
+
+
+def test_build_channels_selected_filter_with_all():
+    supported = set(live.DEFAULT_CHANNELS_BY_CMD) | {"FUEL_LEVEL"}
+    sel = live.build_channels(supported, selected=["FUEL_LEVEL"], include_all=True)
+    assert [c.name for c in sel] == ["Fuel Level"]

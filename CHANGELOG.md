@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-06-24
+
+### Added
+- **Live OBD-II offers every PID the ECU supports**, not just the curated set.
+  The Live tab now lists all supported PIDs (the curated defaults are checked,
+  the rest are available to tick); `build_channels` gains an `include_all`
+  option and dynamically names/units unknown PIDs.
+
+### Fixed
+- **Update check failed with `SSL: CERTIFICATE_VERIFY_FAILED`** in the installed
+  app — the PyInstaller bundle had no CA store. Now ships `certifi` and uses it
+  for HTTPS verification.
+- **App showed the wrong version (0.1.0)** when installed — the frozen bundle
+  lacked package metadata so `__version__` fell back to a hard-coded default.
+  The dist metadata is now bundled, so the real version shows and the updater
+  compares correctly.
+
 ## [0.4.0] - 2026-06-24
 
 ### Added
@@ -105,7 +122,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/JWalen/VAGScanner/releases/tag/v0.4.1
 [0.4.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.4.0
 [0.3.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.3.0
 [0.2.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.2.0

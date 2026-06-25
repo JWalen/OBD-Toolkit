@@ -11,7 +11,7 @@
 
 import os
 
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, copy_metadata
 
 # Resolve paths relative to this spec file (PyInstaller sets SPECPATH).
 SPEC_DIR = os.path.abspath(SPECPATH)
@@ -23,6 +23,14 @@ ICON = ICON if os.path.isfile(ICON) else None
 
 # pyqtgraph does a lot of dynamic importing; pull it in wholesale to be safe.
 pg_datas, pg_binaries, pg_hidden = collect_all("pyqtgraph")
+
+# Bundle the installed dist metadata so importlib.metadata.version("vcds-toolkit")
+# resolves at runtime (otherwise __version__ falls back and shows the wrong
+# version). Requires `pip install -e .` before building (build_installer.ps1 does).
+try:
+    meta_datas = copy_metadata("vcds-toolkit")
+except Exception:
+    meta_datas = []
 
 # Ship the example files alongside the app so users have something to open.
 example_datas = []
@@ -41,13 +49,14 @@ a = Analysis(
     [ENTRY],
     pathex=[SRC],
     binaries=pg_binaries,
-    datas=pg_datas + example_datas + icon_datas,
+    datas=pg_datas + example_datas + icon_datas + meta_datas,
     hiddenimports=pg_hidden
     + [
         "vcds_core",
         "vcds_core.parse",
         "vcds_obd",
         "vcds_obd.live",
+        "certifi",  # CA bundle for the in-app updater's HTTPS check
     ],
     hookspath=[],
     hooksconfig={},

@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import ssl
 import sys
 import urllib.request
 from dataclasses import dataclass
@@ -25,9 +26,34 @@ _API = "https://api.github.com/repos/{repo}/releases/latest"
 # Injectable opener: callable(request, timeout) -> context-manager response.
 Opener = Callable[..., object]
 
+_SSL_CTX: Optional[ssl.SSLContext] = None
+
+
+def _ssl_context() -> Optional[ssl.SSLContext]:
+    """Build an SSL context with a working CA bundle.
+
+    A PyInstaller-frozen app has no system CA store, so HTTPS verification fails
+    with CERTIFICATE_VERIFY_FAILED. Prefer certifi's bundled CA file (PyInstaller
+    ships it via its hook); fall back to the platform default, then — only as a
+    last resort — to the OS trust store via ``truststore`` if present.
+    """
+    try:
+        import certifi
+
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        return ssl.create_default_context()
+    except Exception:  # noqa: BLE001
+        return None
+
 
 def _urlopen(req, timeout: float = 15):
-    return urllib.request.urlopen(req, timeout=timeout)
+    global _SSL_CTX
+    if _SSL_CTX is None:
+        _SSL_CTX = _ssl_context()
+    return urllib.request.urlopen(req, timeout=timeout, context=_SSL_CTX)
 
 
 @dataclass

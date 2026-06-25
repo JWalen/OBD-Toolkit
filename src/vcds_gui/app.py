@@ -638,12 +638,19 @@ if _HAVE_QT:
                 self.conn_status.setText(f"<span style='color:#E53E3E'>Failed: {exc}</span>")
                 return
             supported = self.conn.supported()
-            self.channels = live.build_channels(supported)
+            # Offer EVERY supported PID; default-check only the curated set so a
+            # session doesn't log 100+ channels unless the user opts in.
+            self.channels = live.build_channels(supported, include_all=True)
             self.pid_list.clear()
             for ch in self.channels:
-                item = QtWidgets.QListWidgetItem(f"{ch.name}  [{ch.unit}]")
+                unit = f"  [{ch.unit}]" if ch.unit else ""
+                item = QtWidgets.QListWidgetItem(f"{ch.name}{unit}")
                 item.setFlags(item.flags() | QtCore.Qt.ItemIsUserCheckable)
-                item.setCheckState(QtCore.Qt.Checked)
+                is_default = (
+                    ch.command_name in live.DEFAULT_CHANNELS_BY_CMD
+                    or ch.name in live.DEFAULT_CHANNELS_BY_NAME
+                )
+                item.setCheckState(QtCore.Qt.Checked if is_default else QtCore.Qt.Unchecked)
                 item.setData(QtCore.Qt.UserRole, ch.name)
                 self.pid_list.addItem(item)
             self.conn_status.setText(

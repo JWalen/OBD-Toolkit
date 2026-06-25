@@ -73,7 +73,7 @@ def snapshot_pids_impl(
     except Exception as exc:  # noqa: BLE001
         return {"connected": False, "error": f"No ELM327 adapter: {exc}"}
     try:
-        channels = live.build_channels(conn.supported(), pids)
+        channels = live.build_channels(conn.supported(), pids, include_all=pids is not None)
         snap = live.snapshot(conn, channels)
         by_name = {c.name: c for c in channels}
         return {
@@ -100,7 +100,7 @@ def run_obd_session_impl(
     except Exception as exc:  # noqa: BLE001
         return {"connected": False, "error": f"No ELM327 adapter: {exc}"}
     try:
-        channels = live.build_channels(conn.supported(), pids)
+        channels = live.build_channels(conn.supported(), pids, include_all=pids is not None)
         if not channels:
             return {"connected": True, "error": "No supported OBD-II PIDs reported by the ECU."}
         logger = live.LiveLogger(conn, channels, logs_dir)
