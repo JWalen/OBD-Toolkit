@@ -22,7 +22,7 @@ from dataclasses import asdict
 from typing import List, Optional
 
 # vcds_core is dependency-free and importable as a sibling package.
-from vcds_core import compute, knowledge, parse, perform
+from vcds_core import compute, knowledge, parse, perform, trip
 from vcds_core.diagnose import diagnose as run_diagnose
 
 try:
@@ -353,6 +353,8 @@ def analyze_performance(filename: str, mass_kg: float = 1850) -> dict:
     runs = perform.standard_accel_runs(mlog)
     pulls = perform.detect_pulls(mlog)
     est = perform.estimate_power(mlog, mass_kg)
+    econ = trip.fuel_economy(mlog)
+    bat = trip.battery_analysis(mlog)
     return {
         "file": os.path.basename(mlog.file),
         "acceleration_runs": [
@@ -368,6 +370,17 @@ def analyze_performance(filename: str, mass_kg: float = 1850) -> dict:
             {"peak_hp": est.peak_hp, "peak_torque_nm": est.peak_torque_nm,
              "peak_torque_rpm": est.peak_torque_rpm, "mass_kg": est.mass_kg}
             if est else None
+        ),
+        "economy": (
+            {"l_per_100km": econ.l_per_100km, "mpg_us": econ.mpg_us,
+             "distance_km": econ.distance_km, "fuel_l": econ.fuel_l,
+             "idle_fraction": econ.idle_fraction, "source": econ.source}
+            if econ else None
+        ),
+        "battery": (
+            {"min_v": bat.min_v, "avg_v": bat.avg_v, "max_v": bat.max_v,
+             "cranking_v": bat.cranking_v, "charging_v": bat.charging_v}
+            if bat else None
         ),
     }
 

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-06-25
+
+### Added
+- **Trip / fuel-economy + battery analysis** in the Performance dialog and the
+  MCP `analyze_performance` tool: estimated economy (L/100km & US mpg from a Fuel
+  Rate channel, or from MAF), distance, fuel used, idle %, plus battery
+  min/avg/max with cranking-dip and charging-voltage checks (`vcds_core.trip`).
+
 ## [0.16.0] - 2026-06-25
 
 ### Added
@@ -272,7 +280,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.17.0
 [0.16.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.16.0
 [0.15.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.15.0
 [0.14.1]: https://github.com/JWalen/VAGScanner/releases/tag/v0.14.1

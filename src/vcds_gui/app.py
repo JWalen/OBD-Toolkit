@@ -27,7 +27,7 @@ import time
 from typing import Dict, List, Optional, Tuple
 
 from vcds_core import compare as compare_mod
-from vcds_core import compute, knowledge, parse, perform, profiles, units
+from vcds_core import compute, knowledge, parse, perform, profiles, trip, units
 from vcds_core.diagnose import diagnose as run_diagnose
 from vcds_core.diagnose import report_to_text
 from vcds_core.importers import open_measuring_file
@@ -1385,6 +1385,34 @@ if _HAVE_QT:
             else:
                 p.append("<p class='muted'>Need a speed channel and an acceleration event to "
                          "estimate power.</p>")
+
+            econ = trip.fuel_economy(log)
+            if econ:
+                p.append("<h3>Trip & economy</h3><ul>")
+                p.append(f"<li>Distance: {econ.distance_km:.2f} km "
+                         f"({econ.distance_km * 0.621371:.2f} mi), "
+                         f"avg speed {econ.avg_speed_kmh:.0f} km/h</li>")
+                if econ.l_per_100km:
+                    p.append(f"<li>Economy (est., from {econ.source}): "
+                             f"<b>{econ.l_per_100km:.1f} L/100km</b> "
+                             f"(~{econ.mpg_us:.0f} US mpg)</li>")
+                p.append(f"<li>Fuel used: {econ.fuel_l:.2f} L, "
+                         f"idle {econ.idle_fraction * 100:.0f}% of the time</li></ul>")
+
+            bat = trip.battery_analysis(log)
+            if bat:
+                p.append("<h3>Battery / charging</h3><ul>")
+                p.append(f"<li>Voltage min/avg/max: {bat.min_v:.1f} / {bat.avg_v:.1f} / "
+                         f"{bat.max_v:.1f} V</li>")
+                if bat.charging_v:
+                    p.append(f"<li>Charging voltage (running): ~{bat.charging_v:.1f} V"
+                             + ("" if bat.charging_v >= 13.5 else
+                                " <span style='color:#DD6B20'>(low — check alternator)</span>")
+                             + "</li>")
+                if bat.cranking_v < 10.0:
+                    p.append(f"<li><span style='color:#E53E3E'>Cranking dip to "
+                             f"{bat.cranking_v:.1f} V — weak battery/starter possible</span></li>")
+                p.append("</ul>")
             self.out.setHtml("".join(p))
 
     class DiagnosisDialog(QtWidgets.QDialog):
