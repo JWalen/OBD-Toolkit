@@ -63,6 +63,7 @@ async def test_mcp_handshake_and_file_tools(samples_dir):
                 "find_log_events",
                 "lookup_dtc",
                 "diagnose_file",
+                "analyze_performance",
             ):
                 assert expected in names, f"missing tool {expected}"
 

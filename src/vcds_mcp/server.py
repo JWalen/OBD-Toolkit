@@ -22,7 +22,7 @@ from dataclasses import asdict
 from typing import List, Optional
 
 # vcds_core is dependency-free and importable as a sibling package.
-from vcds_core import compute, knowledge, parse
+from vcds_core import compute, knowledge, parse, perform
 from vcds_core.diagnose import diagnose as run_diagnose
 
 try:
@@ -330,6 +330,42 @@ def diagnose_file(filename: Optional[str] = None, autoscan: Optional[str] = None
         "summary": report.summary,
         "findings": [_finding_dict(f) for f in report.findings],
         "notes": report.notes,
+    }
+
+
+@mcp.tool()
+def analyze_performance(filename: str, mass_kg: float = 1850) -> dict:
+    """Acceleration runs, WOT pulls and an estimated peak power/torque figure.
+
+    Args:
+        filename: Measuring-log CSV file name in the logs folder.
+        mass_kg: Vehicle mass used for the (rough) power estimate.
+
+    Returns:
+        Acceleration times (e.g. 0–100 km/h), detected pulls, and an estimated
+        crank power/torque figure (approximate — depends on mass/drag).
+    """
+    path = _safe_path(filename)
+    mlog = parse.parse_measuring_log(path)
+    runs = perform.standard_accel_runs(mlog)
+    pulls = perform.detect_pulls(mlog)
+    est = perform.estimate_power(mlog, mass_kg)
+    return {
+        "file": os.path.basename(mlog.file),
+        "acceleration_runs": [
+            {"from": r.from_speed, "to": r.to_speed, "unit": r.unit, "seconds": r.elapsed_s}
+            for r in runs
+        ],
+        "pulls": [
+            {"start_s": p.start_time, "end_s": p.end_time, "rpm_start": p.rpm_start,
+             "rpm_end": p.rpm_end, "peak_boost": p.peak_boost, "peak_speed": p.peak_speed}
+            for p in pulls
+        ],
+        "power_estimate": (
+            {"peak_hp": est.peak_hp, "peak_torque_nm": est.peak_torque_nm,
+             "peak_torque_rpm": est.peak_torque_rpm, "mass_kg": est.mass_kg}
+            if est else None
+        ),
     }
 
 

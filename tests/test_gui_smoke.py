@@ -129,6 +129,21 @@ def test_analyzer_adds_computed_channels(qapp, tmp_path):
     win.close()
 
 
+def test_performance_dialog_builds(qapp, tmp_path):
+    rows = ["TIME,Engine RPM,Vehicle Speed", "s,/min,km/h"]
+    for k in range(51):
+        t = k * 0.1
+        rows.append(f"{t:.1f},{1000 + 600 * t:.0f},{20 * t:.2f}")
+    path = tmp_path / "pull.csv"
+    path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    win = gui_app.MainWindow()
+    win.analyzer.load_csv(str(path))
+    dlg = gui_app.PerformanceDialog(win.analyzer.mlog, win)
+    html = dlg.out.toHtml()
+    assert "Acceleration" in html and "power" in html.lower()
+    win.close()
+
+
 def test_diagnosis_dialog_builds(qapp, samples_dir):
     from vcds_core.diagnose import diagnose as run_diagnose
 

@@ -26,7 +26,7 @@ import threading
 import time
 from typing import Dict, List, Optional, Tuple
 
-from vcds_core import compute, knowledge, parse
+from vcds_core import compute, knowledge, parse, perform
 from vcds_core.diagnose import diagnose as run_diagnose
 from vcds_core.diagnose import report_to_text
 from vcds_core.report import build_html_report
@@ -227,8 +227,11 @@ if _HAVE_QT:
             self.btn_export = QtWidgets.QPushButton("Export View…")
             self.btn_diagnose = QtWidgets.QPushButton("🔍 Diagnose")
             self.btn_diagnose.setToolTip("Analyze the loaded log and/or Auto-Scan for likely faults")
+            self.btn_perf = QtWidgets.QPushButton("📈 Performance")
+            self.btn_perf.setToolTip("Acceleration runs, pulls and an estimated power figure")
             self.lbl_info = QtWidgets.QLabel("No file loaded.")
-            for w in (self.btn_open, self.btn_scan, self.btn_diagnose, self.chk_norm, self.btn_export):
+            for w in (self.btn_open, self.btn_scan, self.btn_diagnose, self.btn_perf,
+                      self.chk_norm, self.btn_export):
                 bar.addWidget(w)
             bar.addWidget(self.lbl_info, 1)
             outer.addLayout(bar)
@@ -297,6 +300,7 @@ if _HAVE_QT:
             self.chk_norm.toggled.connect(self.plot.set_normalize)
             self.btn_export.clicked.connect(self.export_view)
             self.btn_diagnose.clicked.connect(self.run_diagnosis)
+            self.btn_perf.clicked.connect(self.run_performance)
             self.chan_list.itemChanged.connect(self._chan_toggled)
             self.btn_find.clicked.connect(lambda: self.run_events(use_rules=False))
             self.btn_apply_rules.clicked.connect(lambda: self.run_events(use_rules=True))
@@ -402,6 +406,12 @@ if _HAVE_QT:
                 except Exception:  # noqa: BLE001
                     plot_png = None
             DiagnosisDialog(report, self.mlog, self.scan, plot_png, self).exec()
+
+        def run_performance(self):
+            if self.mlog is None:
+                QtWidgets.QMessageBox.information(self, "Performance", "Open a measuring CSV first.")
+                return
+            PerformanceDialog(self.mlog, self).exec()
 
         # -- channel toggling ---------------------------------------------- #
         def _chan_toggled(self, item: "QtWidgets.QListWidgetItem"):
@@ -997,6 +1007,87 @@ if _HAVE_QT:
         "critical": "#E53E3E", "high": "#DD6B20", "medium": "#D69E2E",
         "low": "#3182CE", "info": "#718096",
     }
+
+    class PerformanceDialog(QtWidgets.QDialog):
+        """Acceleration runs, WOT pulls and an estimated power/torque figure."""
+
+        def __init__(self, log, parent=None):
+            super().__init__(parent)
+            self._log = log
+            self.setWindowTitle("Performance Analysis")
+            self.resize(640, 540)
+            v = QtWidgets.QVBoxLayout(self)
+
+            row = QtWidgets.QHBoxLayout()
+            row.addWidget(QtWidgets.QLabel("Vehicle mass (kg):"))
+            self.mass_spin = QtWidgets.QSpinBox()
+            self.mass_spin.setRange(500, 4000)
+            self.mass_spin.setSingleStep(25)
+            self.mass_spin.setValue(1850)
+            row.addWidget(self.mass_spin)
+            self.btn_go = QtWidgets.QPushButton("Analyze")
+            self.btn_go.clicked.connect(self._analyze)
+            row.addWidget(self.btn_go)
+            row.addStretch(1)
+            v.addLayout(row)
+
+            self.out = QtWidgets.QTextBrowser()
+            v.addWidget(self.out, 1)
+
+            buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Close)
+            buttons.rejected.connect(self.reject)
+            buttons.accepted.connect(self.accept)
+            v.addWidget(buttons)
+            self._analyze()
+
+        def _analyze(self):
+            log = self._log
+            runs = perform.standard_accel_runs(log)
+            pulls = perform.detect_pulls(log)
+            est = perform.estimate_power(log, self.mass_spin.value())
+
+            p = ["<h3>Acceleration</h3>"]
+            if runs:
+                p.append("<ul>")
+                for r in runs:
+                    p.append(f"<li>{r.from_speed:g}–{r.to_speed:g} {r.unit}: "
+                             f"<b>{r.elapsed_s:.2f}s</b> (at t={r.start_time:.1f}s)</li>")
+                p.append("</ul>")
+            else:
+                p.append("<p class='muted'>No qualifying acceleration runs found "
+                         "(need a speed channel and a clean pull).</p>")
+
+            p.append("<h3>Detected pulls</h3>")
+            if pulls:
+                p.append("<ul>")
+                for pl in pulls:
+                    extra = []
+                    if pl.peak_boost is not None:
+                        extra.append(f"peak boost {pl.peak_boost:g}")
+                    if pl.peak_speed is not None:
+                        extra.append(f"peak speed {pl.peak_speed:g}")
+                    tail = (" — " + ", ".join(extra)) if extra else ""
+                    p.append(f"<li>t={pl.start_time:.1f}–{pl.end_time:.1f}s: "
+                             f"{pl.rpm_start:.0f}→{pl.rpm_end:.0f} rpm{tail}</li>")
+                p.append("</ul>")
+            else:
+                p.append("<p class='muted'>No sustained RPM pulls detected.</p>")
+
+            p.append("<h3>Estimated power (crank)</h3>")
+            if est:
+                p.append(f"<p><b>~{est.peak_hp:.0f} hp</b> peak at t={est.peak_hp_time:.1f}s")
+                if est.peak_torque_nm:
+                    p.append(f", <b>~{est.peak_torque_nm:.0f} N·m</b> "
+                             f"(~{est.peak_torque_nm * 0.7376:.0f} lb-ft) "
+                             f"at {est.peak_torque_rpm:.0f} rpm")
+                p.append(f" — assuming {est.mass_kg} kg.</p>")
+                p.append("<p class='muted'>Rough estimate from the speed trace and mass/drag "
+                         "assumptions — useful for before/after comparison, not a calibrated "
+                         "dyno number.</p>")
+            else:
+                p.append("<p class='muted'>Need a speed channel and an acceleration event to "
+                         "estimate power.</p>")
+            self.out.setHtml("".join(p))
 
     class DiagnosisDialog(QtWidgets.QDialog):
         """Shows a DiagnosticReport: prioritized findings with causes."""

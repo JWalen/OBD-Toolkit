@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-06-24
+
+### Added
+- **Performance analysis** (`vcds_core.perform`): acceleration-run timing
+  (0–100 km/h / 0–60 mph and the next band), wide-open-throttle **pull
+  detection**, and an estimated **crank power & torque** figure derived from the
+  speed trace + vehicle mass. Surfaced via a "📈 Performance" button in the File
+  Analyzer and the MCP `analyze_performance` tool. (Estimate is approximate —
+  great for before/after comparison, not a calibrated dyno number.)
+
 ## [0.6.0] - 2026-06-24
 
 ### Added
@@ -145,7 +155,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.7.0
 [0.6.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.6.0
 [0.5.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.5.0
 [0.4.1]: https://github.com/JWalen/VAGScanner/releases/tag/v0.4.1
