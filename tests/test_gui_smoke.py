@@ -144,6 +144,21 @@ def test_performance_dialog_builds(qapp, tmp_path):
     win.close()
 
 
+def test_unit_system_and_autofit(qapp, tmp_path):
+    path = tmp_path / "u.csv"
+    path.write_text("TIME,Coolant Temp\ns,°C\n0,80\n1,90\n2,100\n", encoding="utf-8")
+    win = gui_app.MainWindow()
+    win.analyzer.load_csv(str(path))
+    win._apply_units("imperial")
+    win.analyzer.plot.set_cursor(2.0)
+    assert "°F" in win.analyzer.plot.readout.text()  # converted unit shown
+    win.analyzer.plot.auto_fit()  # must not raise
+    win._apply_units("as_logged")
+    win.analyzer.plot.set_cursor(2.0)
+    assert "°C" in win.analyzer.plot.readout.text()
+    win.close()
+
+
 def test_dark_mode_toggle(qapp):
     win = gui_app.MainWindow()
     win._apply_theme(True)   # should not raise; plots re-themed

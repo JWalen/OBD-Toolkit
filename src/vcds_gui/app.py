@@ -27,7 +27,7 @@ import time
 from typing import Dict, List, Optional, Tuple
 
 from vcds_core import compare as compare_mod
-from vcds_core import compute, knowledge, parse, perform, profiles
+from vcds_core import compute, knowledge, parse, perform, profiles, units
 from vcds_core.diagnose import diagnose as run_diagnose
 from vcds_core.diagnose import report_to_text
 from vcds_core.importers import open_measuring_file
@@ -99,6 +99,7 @@ if _HAVE_QT:
         def __init__(self, parent=None):
             super().__init__(parent)
             self.normalize = True
+            self._unit_system = units.AS_LOGGED
             # name -> dict(curve, t[list], v[list], unit, color, visible, vmin, vmax)
             self.channels: Dict[str, dict] = {}
             self._color_idx = 0
@@ -198,13 +199,28 @@ if _HAVE_QT:
                 self._cursor_b = None
                 self.vline_b.hide()
 
+        def _conv(self, value, unit):
+            return units.convert(value, unit, self._unit_system)[0]
+
         def _scaled(self, entry: dict) -> List[float]:
-            v = entry["v"]
+            unit = entry["unit"]
+            v = [self._conv(x, unit) for x in entry["v"]]
             if not self.normalize:
                 return v
-            lo, hi = entry["vmin"], entry["vmax"]
+            lo = self._conv(entry["vmin"], unit)
+            hi = self._conv(entry["vmax"], unit)
             span = (hi - lo) or 1.0
             return [(x - lo) / span for x in v]
+
+        def set_unit_system(self, system: str):
+            self._unit_system = system
+            for name in self.channels:
+                self._replot(name)
+
+        def auto_fit(self):
+            """Auto-range the view to fit all visible data."""
+            self.pi.enableAutoRange()
+            self.pi.autoRange()
 
         def _replot(self, name: str):
             entry = self.channels[name]
@@ -252,15 +268,17 @@ if _HAVE_QT:
             for name, entry in self.channels.items():
                 if not entry["visible"] or not entry["t"]:
                     continue
-                val = self._value_at(entry, x)
-                if val is None:
+                raw = self._value_at(entry, x)
+                if raw is None:
                     continue
-                unit = f" {entry['unit']}" if entry["unit"] else ""
+                val, dunit = units.convert(raw, entry["unit"], self._unit_system)
+                unit = f" {dunit}" if dunit else ""
                 line = (f"<span style='color:{entry['color']}'>&#9632;</span> "
                         f"{name}: <b>{val:g}</b>{unit}")
                 if measuring:
-                    val_b = self._value_at(entry, self._cursor_b)
-                    if val_b is not None:
+                    raw_b = self._value_at(entry, self._cursor_b)
+                    if raw_b is not None:
+                        val_b = units.convert(raw_b, entry["unit"], self._unit_system)[0]
                         line += f" &nbsp;<span style='color:#00C9A7'>Δ {val - val_b:+g}</span>"
                 lines.append(line)
             self.readout.setText("<br>".join(lines))
@@ -302,6 +320,8 @@ if _HAVE_QT:
             self.chk_norm.setChecked(True)
             self.chk_measure = QtWidgets.QCheckBox("Measure")
             self.chk_measure.setToolTip("Two-cursor mode: click to drop a second cursor and read Δ")
+            self.btn_fit = QtWidgets.QPushButton("⤢ Fit")
+            self.btn_fit.setToolTip("Auto-fit the graph to all visible data")
             self.btn_export = QtWidgets.QPushButton("Export View…")
             self.btn_diagnose = QtWidgets.QPushButton("🔍 Diagnose")
             self.btn_diagnose.setToolTip("Analyze the loaded log and/or Auto-Scan for likely faults")
@@ -311,7 +331,8 @@ if _HAVE_QT:
             self.btn_compare.setToolTip("Open a second log and compare it (before/after)")
             self.lbl_info = QtWidgets.QLabel("No file loaded.")
             for w in (self.btn_open, self.btn_scan, self.btn_diagnose, self.btn_perf,
-                      self.btn_compare, self.chk_norm, self.chk_measure, self.btn_export):
+                      self.btn_compare, self.chk_norm, self.chk_measure, self.btn_fit,
+                      self.btn_export):
                 bar.addWidget(w)
             bar.addWidget(self.lbl_info, 1)
             outer.addLayout(bar)
@@ -379,6 +400,7 @@ if _HAVE_QT:
             self.btn_scan.clicked.connect(self.open_scan_dialog)
             self.chk_norm.toggled.connect(self.plot.set_normalize)
             self.chk_measure.toggled.connect(self.plot.set_measure)
+            self.btn_fit.clicked.connect(self.plot.auto_fit)
             self.btn_export.clicked.connect(self.export_view)
             self.btn_diagnose.clicked.connect(self.run_diagnosis)
             self.btn_perf.clicked.connect(self.run_performance)
@@ -1042,7 +1064,8 @@ if _HAVE_QT:
                 QtWidgets.QMessageBox.information(
                     self, "Gauges", "Connect and select at least one PID first.")
                 return
-            self._gauges = GaugeWindow(channels, self)
+            system = self.settings.value("ui/units", units.AS_LOGGED, type=str)
+            self._gauges = GaugeWindow(channels, system, self)
             self._gauges.set_thresholds(self.trigger_rules)
             self._gauges.show()
 
@@ -1698,9 +1721,11 @@ if _HAVE_QT:
     # Live gauge dashboard
     # --------------------------------------------------------------------- #
     class GaugeTile(QtWidgets.QFrame):
-        def __init__(self, name: str, unit: str, parent=None):
+        def __init__(self, name: str, unit: str, system: str = units.AS_LOGGED, parent=None):
             super().__init__(parent)
             self.name = name
+            self.unit = unit
+            self.system = system
             self.warn = None
             self.crit = None
             self.setMinimumSize(160, 96)
@@ -1723,7 +1748,10 @@ if _HAVE_QT:
             if value is None:
                 self.l_val.setText("—")
                 return
-            self.l_val.setText(f"{value:g}")
+            disp, dunit = units.convert(value, self.unit, self.system)
+            self.l_val.setText(f"{disp:g}")
+            self.l_unit.setText(dunit)
+            # thresholds are expressed in logged units -> compare the raw value
             color = None
             if self.crit is not None and value >= self.crit:
                 color = "#E53E3E"
@@ -1738,7 +1766,7 @@ if _HAVE_QT:
                 self.setStyleSheet(self._base)
 
     class GaugeWindow(QtWidgets.QWidget):
-        def __init__(self, channels, parent=None):
+        def __init__(self, channels, system=units.AS_LOGGED, parent=None):
             super().__init__(parent)
             self.setWindowTitle("Live Gauges")
             self.setWindowFlag(QtCore.Qt.Window)
@@ -1747,7 +1775,7 @@ if _HAVE_QT:
             self.tiles = {}
             cols = 4
             for i, ch in enumerate(channels):
-                tile = GaugeTile(ch.name, ch.unit)
+                tile = GaugeTile(ch.name, ch.unit, system)
                 self.tiles[ch.name] = tile
                 grid.addWidget(tile, i // cols, i % cols)
 
@@ -2071,6 +2099,7 @@ if _HAVE_QT:
             self.settings = QtCore.QSettings("DeltaModTech", "VCDS Toolkit")
             self._build_menu()
             self._apply_theme(self.settings.value("ui/dark", False, type=bool))
+            self._apply_units(self.settings.value("ui/units", units.AS_LOGGED, type=str))
             self.statusBar().showMessage(
                 f"Logs dir: {DEFAULT_LOGS_DIR}   ·   Press F1 for help"
             )
@@ -2098,6 +2127,19 @@ if _HAVE_QT:
                 act.triggered.connect(lambda _checked, p=pid: self._set_profile(p))
                 self._profile_group.addAction(act)
                 prof_menu.addAction(act)
+
+            units_menu = view_menu.addMenu("&Units")
+            self._units_group = QtGui.QActionGroup(self)
+            cur_units = self.settings.value("ui/units", units.AS_LOGGED, type=str)
+            for uid, label in ((units.AS_LOGGED, "As logged"),
+                               (units.METRIC, "Metric"), (units.IMPERIAL, "Imperial")):
+                a = QtGui.QAction(label, self)
+                a.setCheckable(True)
+                a.setChecked(uid == cur_units)
+                a.setData(uid)
+                a.triggered.connect(lambda _c, u=uid: self._set_units(u))
+                self._units_group.addAction(a)
+                units_menu.addAction(a)
 
             tools_menu = self.menuBar().addMenu("&Tools")
             mcp_action = QtGui.QAction("Install &MCP Server (for Claude)…", self)
@@ -2162,6 +2204,14 @@ if _HAVE_QT:
             self.settings.setValue("ui/profile", pid)
             self.statusBar().showMessage(
                 f"Vehicle profile: {profiles.get_profile(pid).label}", 4000)
+
+        def _set_units(self, system: str):
+            self.settings.setValue("ui/units", system)
+            self._apply_units(system)
+
+        def _apply_units(self, system: str):
+            self.analyzer.plot.set_unit_system(system)
+            self.live_tab.plot.set_unit_system(system)
 
         def current_profile(self) -> str:
             return self.settings.value("ui/profile", profiles.DEFAULT_PROFILE, type=str)

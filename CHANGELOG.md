@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-06-25
+
+### Added
+- **Units selector** (View → Units: *As logged* / *Metric* / *Imperial*):
+  converts displayed values in the plot cursor readout and the live gauges
+  (°C↔°F, km/h↔mph, kPa/mbar↔psi, km↔mi, L↔gal, N·m↔lb-ft). Bidirectional, so an
+  imperial-sourced log can be shown metric and vice-versa; unknown units pass
+  through unchanged. Remembered between sessions.
+- **"⤢ Fit" button** in the File Analyzer to auto-fit the graph to all visible
+  data.
+
 ## [0.13.0] - 2026-06-25
 
 ### Added
@@ -225,7 +236,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.14.0
 [0.13.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.13.0
 [0.12.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.12.0
 [0.11.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.11.0
