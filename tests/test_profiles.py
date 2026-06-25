@@ -28,6 +28,17 @@ def test_vag_notes_only_for_vag_profile(samples_dir):
     assert len(vag.findings) == len(generic.findings)  # same findings, fewer notes
 
 
+def test_ford_brand_code_pack():
+    from vcds_core import knowledge
+
+    # generic lookup doesn't know a Ford-specific P1xxx code
+    assert not knowledge.lookup("P1131").known
+    # but the Ford brand pack does
+    k = knowledge.lookup("P1131", brand="ford")
+    assert k.known and "Lean" in k.description
+    assert k.causes
+
+
 def test_data_known_issue_is_brand_specific(tmp_path):
     # a lean trim triggers a PCV note for VAG/Ford but not generic
     path = tmp_path / "lean.csv"

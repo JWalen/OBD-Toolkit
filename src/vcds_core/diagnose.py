@@ -78,12 +78,12 @@ def _fault_findings(scan: AutoScan, profile: Profile) -> List[Finding]:
             k = None
             for cand in (pcode, fault.code):
                 if cand:
-                    kk = knowledge.lookup(cand)
+                    kk = knowledge.lookup(cand, brand=profile.id)
                     if kk.known:
                         k = kk
                         break
             if k is None:
-                k = knowledge.lookup(pcode or fault.code)
+                k = knowledge.lookup(pcode or fault.code, brand=profile.id)
 
             # Prefer VCDS's own description for the title; keep both codes.
             description = fault.description or k.description

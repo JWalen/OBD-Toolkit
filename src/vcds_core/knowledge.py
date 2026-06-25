@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 from ._dtc_data import (
+    BRAND_CODE_DB,
     CODE_CATEGORY,
     CODE_DB,
     KNOWN_ISSUES,
@@ -73,14 +74,19 @@ def _structural(code: str) -> CodeKnowledge:
     )
 
 
-def lookup(code: str) -> CodeKnowledge:
+def lookup(code: str, brand: Optional[str] = None) -> CodeKnowledge:
     """Return knowledge for a DTC, falling back to structural decoding.
 
     Args:
         code: A DTC such as ``"P0299"`` (apostrophes/whitespace tolerated).
+        brand: Optional vehicle profile id (e.g. ``"ford"``) to consult its
+            manufacturer-specific (P1xxx) code pack for codes not in the shared
+            generic table.
     """
     norm = normalize_code(code)
     entry = CODE_DB.get(norm)
+    if entry is None and brand:
+        entry = BRAND_CODE_DB.get(brand, {}).get(norm)
     if entry is None:
         return _structural(norm)
     return CodeKnowledge(

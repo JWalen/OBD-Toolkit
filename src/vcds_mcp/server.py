@@ -262,17 +262,20 @@ def find_log_events(
 
 
 @mcp.tool()
-def lookup_dtc(code: str) -> dict:
+def lookup_dtc(code: str, profile: str = "generic") -> dict:
     """Look up a diagnostic trouble code's meaning, severity and likely causes.
 
     Args:
         code: A DTC such as "P0299" (leading apostrophes / lower-case tolerated).
+        profile: Vehicle brand for manufacturer-specific (P1xxx) codes —
+            "vag", "ford" or "generic".
 
     Returns:
         Description, severity, affected system, likely causes (most-likely
-        first), any VAG-specific note, and whether it was an exact match.
+        first), any brand note, and whether it was an exact match.
     """
-    k = knowledge.lookup(code)
+    brand = None if profile == "generic" else profile
+    k = knowledge.lookup(code, brand=brand)
     return {
         "code": k.code,
         "description": k.description,

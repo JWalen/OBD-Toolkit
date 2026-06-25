@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-06-25
+
+### Added
+- **Generic-app CSV importer** (`vcds_core.importers`): open logs from **Torque**,
+  **OBD Fusion**, **FORScan** and similar apps (any brand). Handles
+  `Name(unit)` headers, timestamp **or** seconds time columns, and leading
+  GPS/metadata columns. The File Analyzer auto-detects VCDS vs generic format on
+  open, so file analysis is no longer VCDS-only.
+- **Ford fault-code pack**: common Ford/Lincoln P1xxx codes (P1131/P1151 lean,
+  P1260 PATS, P1289 CHT, EVAP, …) consulted when the Ford profile is active;
+  exposed via `knowledge.lookup(code, brand=...)` and the MCP `lookup_dtc`
+  (`profile` arg).
+
 ## [0.11.0] - 2026-06-25
 
 ### Added
@@ -198,7 +211,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.12.0
 [0.11.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.11.0
 [0.10.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.10.0
 [0.9.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.9.0

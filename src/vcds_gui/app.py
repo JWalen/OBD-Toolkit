@@ -30,6 +30,7 @@ from vcds_core import compare as compare_mod
 from vcds_core import compute, knowledge, parse, perform, profiles
 from vcds_core.diagnose import diagnose as run_diagnose
 from vcds_core.diagnose import report_to_text
+from vcds_core.importers import open_measuring_file
 from vcds_core.report import build_html_report
 from vcds_gui import ai, updater
 from vcds_obd import live
@@ -399,7 +400,8 @@ if _HAVE_QT:
 
         def load_csv(self, path: str):
             try:
-                self.mlog = parse.parse_measuring_log(path)
+                # Auto-detect: VCDS layout first, then generic (Torque/OBD Fusion/FORScan).
+                self.mlog = open_measuring_file(path)
                 compute.add_computed_channels(self.mlog)  # adds Fuel Trim Total, AFR, …
             except Exception as exc:  # noqa: BLE001
                 QtWidgets.QMessageBox.critical(self, "Parse error", str(exc))

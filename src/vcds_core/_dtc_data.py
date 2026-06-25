@@ -169,6 +169,34 @@ CODE_DB = {
               "system": "Network / CAN", "causes": ["CAN wiring", "ABS module power/ground", "Connector"]},
 }
 
+# Manufacturer-specific (P1xxx) codes by brand. Generic P0xxx codes live in
+# CODE_DB and are shared by every profile; these are only consulted for the
+# matching vehicle profile.
+BRAND_CODE_DB = {
+    "ford": {
+        "P1000": {"description": "OBD-II Monitor Testing Not Complete", "severity": "info",
+                  "system": "Readiness", "causes": ["Drive cycle not completed since codes cleared"]},
+        "P1100": {"description": "Mass Air Flow Sensor Intermittent", "severity": "medium",
+                  "system": "Air metering", "causes": ["Failing MAF", "Wiring/connector", "Intake leak"]},
+        "P1112": {"description": "Intake Air Temperature Sensor Intermittent", "severity": "low",
+                  "system": "Air metering", "causes": ["IAT sensor", "Wiring"]},
+        "P1131": {"description": "Lack of HO2S-11 Switch — Sensor Indicates Lean (Bank 1)",
+                  "severity": "medium", "system": "Fuel & air metering",
+                  "causes": ["Upstream O2 sensor", "Vacuum/intake leak", "Low fuel pressure", "Exhaust leak"]},
+        "P1151": {"description": "Lack of HO2S-21 Switch — Sensor Indicates Lean (Bank 2)",
+                  "severity": "medium", "system": "Fuel & air metering",
+                  "causes": ["Upstream O2 sensor (B2)", "Vacuum/intake leak", "Low fuel pressure"]},
+        "P1260": {"description": "Theft Detected — Vehicle Immobilized (PATS)", "severity": "high",
+                  "system": "Anti-theft", "causes": ["Key not recognized", "PATS transceiver", "Key/IC fault"]},
+        "P1289": {"description": "Cylinder Head Temperature Sensor High Input", "severity": "high",
+                  "system": "Cooling", "causes": ["Overheating", "CHT sensor", "Low coolant", "Wiring"]},
+        "P1450": {"description": "Unable to Bleed Up Fuel Tank Vacuum", "severity": "low",
+                  "system": "Emissions (EVAP)", "causes": ["Blocked EVAP line", "Purge/vent valve", "Fuel cap"]},
+        "P144A": {"description": "EVAP System Purge Vapor Line Restricted", "severity": "low",
+                  "system": "Emissions (EVAP)", "causes": ["Restricted purge line", "Purge valve"]},
+    },
+}
+
 # VAG known-issue knowledge keyed by a short topic, surfaced by the diagnostic engine.
 KNOWN_ISSUES = {
     "carbon_buildup": "Direct-injection (FSI/TFSI) intake valves accumulate carbon, causing rough "
