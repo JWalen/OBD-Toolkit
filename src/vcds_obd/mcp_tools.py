@@ -14,7 +14,7 @@ from __future__ import annotations
 import os
 from typing import List, Optional
 
-from vcds_core import knowledge
+from vcds_core import knowledge, vin
 
 from . import live
 
@@ -96,6 +96,51 @@ def snapshot_pids_impl(
         _close(conn)
 
 
+def vehicle_info_impl(logs_dir: str, port: Optional[str] = None) -> dict:
+    try:
+        conn = live.connect(port=port)
+    except Exception as exc:  # noqa: BLE001
+        return {"connected": False, "error": f"No ELM327 adapter: {exc}"}
+    try:
+        vin_str = conn.read_vin() if hasattr(conn, "read_vin") else None
+        cals = conn.read_calibration_ids() if hasattr(conn, "read_calibration_ids") else []
+        info = vin.decode_vin(vin_str) if vin_str else None
+        return {
+            "connected": True,
+            "vin": vin_str,
+            "make": info.make if info else None,
+            "model_year": info.year if info else None,
+            "brand_profile": info.brand_profile if info else None,
+            "calibration_ids": cals,
+        }
+    finally:
+        _close(conn)
+
+
+def readiness_impl(logs_dir: str, port: Optional[str] = None) -> dict:
+    try:
+        conn = live.connect(port=port)
+    except Exception as exc:  # noqa: BLE001
+        return {"connected": False, "error": f"No ELM327 adapter: {exc}"}
+    try:
+        r = conn.read_readiness() if hasattr(conn, "read_readiness") else None
+        perm = conn.read_permanent_dtcs() if hasattr(conn, "read_permanent_dtcs") else []
+        if r is None:
+            return {"connected": True, "error": "Readiness status unavailable."}
+        not_ready = [m for m, s in r["monitors"].items() if s["available"] and not s["complete"]]
+        return {
+            "connected": True,
+            "mil_on": r["mil"],
+            "dtc_count": r["dtc_count"],
+            "monitors": r["monitors"],
+            "incomplete_monitors": not_ready,
+            "ready_for_emissions": (not r["mil"]) and len(not_ready) == 0,
+            "permanent_dtcs": [{"code": c, "description": d} for c, d in perm],
+        }
+    finally:
+        _close(conn)
+
+
 def run_obd_session_impl(
     logs_dir: str,
     duration_s: float,
@@ -166,6 +211,32 @@ def register_obd_tools(mcp, logs_dir_fn) -> None:
             when no adapter is present.
         """
         return obd_status_impl(logs_dir_fn(), port=port, baud=baud)
+
+    @mcp.tool()
+    def vehicle_info(port: Optional[str] = None) -> dict:
+        """Read the VIN and ECU calibration IDs, and decode make / model year.
+
+        Args:
+            port: Serial port to use. Auto-scans when omitted.
+
+        Returns:
+            VIN, decoded make/model-year/brand-profile, and calibration IDs.
+        """
+        return vehicle_info_impl(logs_dir_fn(), port=port)
+
+    @mcp.tool()
+    def readiness_monitors(port: Optional[str] = None) -> dict:
+        """Read I/M emissions-readiness monitors, MIL state and permanent DTCs.
+
+        Args:
+            port: Serial port to use. Auto-scans when omitted.
+
+        Returns:
+            MIL state, DTC count, each monitor's availability/completeness, which
+            monitors are incomplete, an overall emissions-ready flag, and any
+            permanent (mode 0A) DTCs.
+        """
+        return readiness_impl(logs_dir_fn(), port=port)
 
     @mcp.tool()
     def read_live_dtcs(port: Optional[str] = None) -> dict:

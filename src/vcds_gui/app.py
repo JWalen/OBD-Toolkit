@@ -755,8 +755,11 @@ if _HAVE_QT:
             dbar = QtWidgets.QHBoxLayout()
             self.btn_read_dtc = QtWidgets.QPushButton("Read DTCs")
             self.btn_clear_dtc = QtWidgets.QPushButton("Clear DTCs…")
+            self.btn_vehinfo = QtWidgets.QPushButton("ⓘ Vehicle Info")
+            self.btn_vehinfo.setToolTip("VIN, calibration IDs, emissions readiness, permanent DTCs")
             dbar.addWidget(self.btn_read_dtc)
             dbar.addWidget(self.btn_clear_dtc)
+            dbar.addWidget(self.btn_vehinfo)
             dv.addLayout(dbar)
             left_split.addWidget(dtc_box)
 
@@ -809,6 +812,7 @@ if _HAVE_QT:
             self.btn_add_trig.clicked.connect(self._add_trigger_rule)
             self.btn_read_dtc.clicked.connect(self.read_dtcs)
             self.btn_clear_dtc.clicked.connect(self.clear_dtcs)
+            self.btn_vehinfo.clicked.connect(self.show_vehicle_info)
             self.btn_start.clicked.connect(self.start_logging)
             self.btn_stop.clicked.connect(self.stop_logging)
             self.btn_gauges.clicked.connect(self.open_gauges)
@@ -951,8 +955,28 @@ if _HAVE_QT:
         def _set_connected(self, on: bool):
             self.btn_connect.setEnabled(not on)
             self.btn_disconnect.setEnabled(on)
-            for w in (self.btn_start, self.btn_read_dtc, self.btn_clear_dtc):
+            for w in (self.btn_start, self.btn_read_dtc, self.btn_clear_dtc, self.btn_vehinfo):
                 w.setEnabled(on)
+
+        def show_vehicle_info(self):
+            if self.conn is None:
+                QtWidgets.QMessageBox.information(self, "Vehicle Info", "Connect to an adapter first.")
+                return
+            from vcds_core import vin as vinmod
+
+            conn = self.conn
+            vstr = conn.read_vin() if hasattr(conn, "read_vin") else None
+            cals = conn.read_calibration_ids() if hasattr(conn, "read_calibration_ids") else []
+            readiness = conn.read_readiness() if hasattr(conn, "read_readiness") else None
+            try:
+                perm = conn.read_permanent_dtcs() if hasattr(conn, "read_permanent_dtcs") else []
+            except Exception:  # noqa: BLE001
+                perm = []
+            info = vinmod.decode_vin(vstr) if vstr else None
+            VehicleInfoDialog(vstr, info, cals, readiness, perm, self).exec()
+            # Auto-select the brand profile from the VIN.
+            if info and info.brand_profile != "generic":
+                self.main._set_profile(info.brand_profile)
 
         # -- triggers ------------------------------------------------------- #
         def _add_trigger_rule(self):
@@ -2131,6 +2155,59 @@ if _HAVE_QT:
             )
             self.btn_send.setEnabled(True)
 
+    class VehicleInfoDialog(QtWidgets.QDialog):
+        """Shows VIN/decode, calibration IDs, I/M readiness and permanent DTCs."""
+
+        def __init__(self, vin_str, info, cals, readiness, perm, parent=None):
+            super().__init__(parent)
+            self.setWindowTitle("Vehicle Info & Readiness")
+            self.resize(560, 580)
+            v = QtWidgets.QVBoxLayout(self)
+            br = QtWidgets.QTextBrowser()
+            h = ["<h3>Vehicle</h3>", f"<b>VIN:</b> {vin_str or 'n/a'}<br>"]
+            if info:
+                h.append(f"<b>Make:</b> {info.make or '?'} &nbsp;&nbsp; "
+                         f"<b>Year:</b> {info.year or '?'} &nbsp;&nbsp; "
+                         f"<b>Profile:</b> {info.brand_profile}<br>")
+            if cals:
+                h.append("<b>Calibration IDs:</b> " + ", ".join(cals) + "<br>")
+
+            h.append("<h3>Emissions readiness</h3>")
+            if readiness:
+                mil = "<span style='color:#E53E3E'>ON ⚠</span>" if readiness["mil"] else "off"
+                h.append(f"<b>MIL (check-engine):</b> {mil} &nbsp;&nbsp; "
+                         f"<b>Stored DTCs:</b> {readiness['dtc_count']}<br>")
+                h.append("<table cellpadding=3>")
+                incomplete = []
+                for name, st in readiness["monitors"].items():
+                    if not st["available"]:
+                        status = "<span style='color:#718096'>n/a</span>"
+                    elif st["complete"]:
+                        status = "<span style='color:#38A169'>ready</span>"
+                    else:
+                        status = "<span style='color:#E53E3E'>NOT ready</span>"
+                        incomplete.append(name)
+                    h.append(f"<tr><td>{name.replace('_', ' ')}</td><td>{status}</td></tr>")
+                h.append("</table>")
+                ready = (not readiness["mil"]) and not incomplete
+                verdict = ("<span style='color:#38A169'>likely ready to pass</span>" if ready
+                           else "<span style='color:#DD6B20'>not ready</span>")
+                h.append(f"<p><b>Emissions test:</b> {verdict}</p>")
+            else:
+                h.append("<p style='color:#718096'>Readiness status unavailable.</p>")
+
+            if perm:
+                h.append("<h3>Permanent DTCs (mode 0A)</h3><ul>")
+                for code, _ in perm:
+                    h.append(f"<li>{code} — {knowledge.lookup(code).description}</li>")
+                h.append("</ul>")
+            br.setHtml("".join(h))
+            v.addWidget(br, 1)
+            buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Close)
+            buttons.rejected.connect(self.reject)
+            buttons.accepted.connect(self.accept)
+            v.addWidget(buttons)
+
     class EnhancedPidsDialog(QtWidgets.QDialog):
         """View / read experimental manufacturer (mode 22) enhanced PIDs."""
 
@@ -2349,6 +2426,9 @@ if _HAVE_QT:
 
         def _set_profile(self, pid: str):
             self.settings.setValue("ui/profile", pid)
+            for a in self._profile_group.actions():
+                if a.data() == pid:
+                    a.setChecked(True)
             self.statusBar().showMessage(
                 f"Vehicle profile: {profiles.get_profile(pid).label}", 4000)
 

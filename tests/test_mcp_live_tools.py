@@ -93,6 +93,38 @@ def test_snapshot_pids(monkeypatch, tmp_path):
     assert snap["values"]["Boost (derived)"]["unit"] == "kPa"
 
 
+def test_vehicle_info_impl(monkeypatch, tmp_path):
+    class Conn(FakeOBD):
+        def read_vin(self):
+            return "WAUZZZ8K9BA123456"
+
+        def read_calibration_ids(self):
+            return ["8K0907115P", "CVN1234"]
+
+    monkeypatch.setattr(live, "connect", lambda **k: Conn())
+    out = mcp_tools.vehicle_info_impl(str(tmp_path))
+    assert out["connected"] and out["vin"] == "WAUZZZ8K9BA123456"
+    assert out["make"] == "Audi" and out["brand_profile"] == "vag"
+    assert "8K0907115P" in out["calibration_ids"]
+
+
+def test_readiness_impl(monkeypatch, tmp_path):
+    class Conn(FakeOBD):
+        def read_readiness(self):
+            return {"mil": False, "dtc_count": 0, "monitors": {
+                "misfire_monitoring": {"available": True, "complete": True},
+                "catalyst_monitoring": {"available": True, "complete": False}}}
+
+        def read_permanent_dtcs(self):
+            return []
+
+    monkeypatch.setattr(live, "connect", lambda **k: Conn())
+    out = mcp_tools.readiness_impl(str(tmp_path))
+    assert out["mil_on"] is False
+    assert "catalyst_monitoring" in out["incomplete_monitors"]
+    assert out["ready_for_emissions"] is False  # an incomplete monitor
+
+
 def test_run_obd_session_roundtrips(monkeypatch, tmp_path):
     monkeypatch.setattr(live, "connect", lambda **k: FakeOBD())
     # Make the session instant and deterministic.

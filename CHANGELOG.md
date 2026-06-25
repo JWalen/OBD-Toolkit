@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-06-25
+
+### Added
+- **Vehicle Info & emissions readiness** (Live tab → "ⓘ Vehicle Info"): reads the
+  **VIN** (with make / model-year decode), ECU **calibration IDs**, **I/M
+  readiness monitors** (ready / not-ready / n-a), **MIL** state, and **permanent
+  DTCs** (mode 0A), with an overall "ready to pass emissions" verdict. The brand
+  **profile is auto-selected from the VIN**.
+- `vcds_core.vin` decoder (make / model year / brand profile from WMI + year code).
+- MCP tools: **`vehicle_info`** and **`readiness_monitors`** so Claude can read
+  VIN/cal-IDs and emissions readiness.
+
 ## [0.15.0] - 2026-06-25
 
 ### Changed
@@ -260,7 +272,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.16.0
 [0.15.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.15.0
 [0.14.1]: https://github.com/JWalen/VAGScanner/releases/tag/v0.14.1
 [0.14.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.14.0

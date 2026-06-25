@@ -306,6 +306,19 @@ def test_pdf_export_path(qapp, tmp_path, samples_dir):
     assert out.is_file() and out.stat().st_size > 0
 
 
+def test_vehicle_info_dialog_builds(qapp):
+    from vcds_core.vin import decode_vin
+
+    info = decode_vin("WAUZZZ8K9BA123456")
+    readiness = {"mil": False, "dtc_count": 0, "monitors": {
+        "misfire_monitoring": {"available": True, "complete": True},
+        "evap_monitoring": {"available": True, "complete": False}}}
+    dlg = gui_app.VehicleInfoDialog("WAUZZZ8K9BA123456", info, ["CAL1"], readiness, [("P0420", "")])
+    html = dlg.findChild(QtWidgets.QTextBrowser).toHtml()
+    assert "Audi" in html and "readiness" in html.lower()
+    assert "NOT ready" in html  # evap incomplete
+
+
 def test_enhanced_pids_dialog_builds(qapp):
     win = gui_app.MainWindow()
     dlg = gui_app.EnhancedPidsDialog(win)

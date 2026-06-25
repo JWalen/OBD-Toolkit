@@ -671,6 +671,61 @@ class PyOBDConnection:
         resp = self._one_shot(cmd)
         return resp is not None
 
+    # -- vehicle info / emissions reads --------------------------------------- #
+    def read_vin(self) -> Optional[str]:
+        cmd = getattr(self._obd.commands, "VIN", None)
+        resp = self._one_shot(cmd)
+        if resp and not resp.is_null() and resp.value:
+            return str(resp.value).strip()
+        return None
+
+    def read_calibration_ids(self) -> List[str]:
+        out: List[str] = []
+        for name in ("CALIBRATION_ID", "CVN", "ECU_NAME"):
+            cmd = getattr(self._obd.commands, name, None)
+            resp = self._one_shot(cmd)
+            if resp and not resp.is_null() and resp.value:
+                val = resp.value
+                if isinstance(val, (list, tuple)):
+                    out.extend(str(x) for x in val if x)
+                else:
+                    out.append(str(val))
+        return out
+
+    def read_readiness(self) -> Optional[dict]:
+        """I/M readiness from mode-01 PID 01 (MIL, DTC count, monitor status)."""
+        cmd = getattr(self._obd.commands, "STATUS", None)
+        resp = self._one_shot(cmd)
+        if resp is None or resp.is_null() or resp.value is None:
+            return None
+        st = resp.value
+        monitors = {}
+        for attr in dir(st):
+            if attr.startswith("_"):
+                continue
+            val = getattr(st, attr, None)
+            if hasattr(val, "available") and hasattr(val, "complete"):
+                monitors[attr] = {"available": bool(val.available), "complete": bool(val.complete)}
+        return {
+            "mil": bool(getattr(st, "MIL", False)),
+            "dtc_count": int(getattr(st, "DTC_count", 0) or 0),
+            "monitors": monitors,
+        }
+
+    def read_permanent_dtcs(self) -> List[Tuple[str, str]]:
+        """Permanent DTCs (mode 0A) via a raw query (best effort)."""
+        data = self.query_raw("0A")
+        out: List[Tuple[str, str]] = []
+        # Some ECUs prefix a count byte; drop a leading odd byte if present.
+        if len(data) % 2 == 1:
+            data = data[1:]
+        for i in range(0, len(data) - 1, 2):
+            b1, b2 = data[i], data[i + 1]
+            if b1 == 0 and b2 == 0:
+                continue
+            out.append((RawELM327Connection._decode_dtc(b1, b2), ""))
+        return out
+
     def status(self) -> str:
         try:
             return str(self._conn.status())
