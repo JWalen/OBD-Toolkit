@@ -2857,15 +2857,16 @@ if _HAVE_QT:
             ok = QtWidgets.QMessageBox.question(
                 self,
                 "Install update",
-                "The update has downloaded. VCDS Toolkit will close and the "
-                "installer will run.\n\nInstall now?",
+                "The update has downloaded. OBD Toolkit will close, update "
+                "automatically in the background, and reopen.\n\nInstall now?",
                 QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
                 QtWidgets.QMessageBox.Yes,
             )
             if ok != QtWidgets.QMessageBox.Yes:
                 return
+            relaunch = sys.executable if getattr(sys, "frozen", False) else None
             try:
-                updater.launch_installer(path)
+                updater.launch_installer(path, silent=True, relaunch=relaunch)
             except Exception as exc:  # noqa: BLE001
                 QtWidgets.QMessageBox.critical(self, "Launch failed", str(exc))
                 return

@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-06-25
+
+First stable release. A full-featured, multi-brand OBD-II / VAG desktop app with
+an MCP server and an AI assistant.
+
+### Added
+- **Unattended (silent) updates**: when you accept an update it now closes,
+  installs in the background with no wizard, and **reopens automatically**.
+
+### Summary of what's in 1.0.0
+- **Analyze**: VCDS measuring logs & Auto-Scans plus generic importers
+  (Torque / OBD Fusion / FORScan); diagnostic engine + fault-code knowledge base;
+  computed channels; performance, trip/economy, battery and A/B comparison;
+  PDF/HTML reports.
+- **Live OBD-II**: all supported PIDs, redesigned needle/bar gauges, event-capture,
+  DTCs with fixes, vehicle info, emissions readiness + smog report, Mode 06, and
+  safe resets.
+- **Brands**: VAG / Ford / Generic profiles (auto-selected from VIN), Ford code
+  pack, multi-vehicle garage, experimental enhanced (mode-22) PIDs.
+- **Integrations**: MCP server (~18 tools) with one-click install, and an in-app
+  AI assistant (Claude / GPT / Gemini).
+- **App**: dark mode, units selector, auto-fit, presets, help/tour, auto-update,
+  and a signed-capable Windows installer.
+
 ## [0.21.0] - 2026-06-25
 
 ### Added
@@ -315,7 +339,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.21.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.0.0
 [0.21.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.21.0
 [0.20.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.20.0
 [0.19.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.19.0

@@ -65,6 +65,35 @@ def _opener_for(payload: dict):
 # --------------------------------------------------------------------------- #
 
 
+def test_launch_installer_silent_writes_helper(monkeypatch, tmp_path):
+    import os
+    import sys
+
+    if not sys.platform.startswith("win"):
+        pytest.skip("silent helper is Windows-only")
+
+    import subprocess
+
+    calls = {}
+
+    def fake_popen(cmd, **kw):
+        calls["cmd"] = cmd
+        return object()
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    setup = str(tmp_path / "Setup.exe")
+    app = str(tmp_path / "App.exe")
+    updater.launch_installer(setup, silent=True, relaunch=app)
+
+    # it should have launched a cmd helper batch
+    assert calls["cmd"][0] == "cmd" and calls["cmd"][1] == "/c"
+    bat = calls["cmd"][2]
+    content = open(bat, encoding="ascii").read()
+    assert "/VERYSILENT" in content
+    assert "App.exe" in content  # relaunch line
+    os.remove(bat)
+
+
 def test_ssl_context_builds_without_error():
     import ssl
 

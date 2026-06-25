@@ -39,6 +39,9 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 SetupIconFile=app.ico
+; Let a silent update close the running app (the updater relaunches it itself).
+CloseApplications=yes
+RestartApplications=no
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayName={#MyAppName} {#MyAppVersion}

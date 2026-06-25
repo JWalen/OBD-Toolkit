@@ -198,15 +198,43 @@ def download_installer(
     return dest
 
 
-def launch_installer(path: str) -> None:
-    """Launch the downloaded installer. The caller should then quit the app so
-    the running executable is not locked during the in-place upgrade."""
-    if sys.platform.startswith("win"):
-        os.startfile(path)  # type: ignore[attr-defined]  # noqa: S606 - intended
-    else:
-        import subprocess
+def launch_installer(path: str, silent: bool = False, relaunch: Optional[str] = None) -> None:
+    """Launch the downloaded installer; the caller should then quit the app.
 
+    Args:
+        path: The downloaded Setup.exe.
+        silent: Run the Inno Setup installer unattended (no wizard).
+        relaunch: When silent, an executable to start after the update completes
+            (typically the app's own exe, so it reopens automatically).
+
+    With ``silent``, a small detached helper batch waits for the app to exit,
+    runs the installer with ``/VERYSILENT``, then relaunches — giving a hands-off
+    update.
+    """
+    import subprocess
+
+    if not sys.platform.startswith("win"):
         subprocess.Popen([path])
+        return
+    if not silent:
+        os.startfile(path)  # type: ignore[attr-defined]  # noqa: S606 - intended
+        return
+
+    import tempfile
+
+    lines = [
+        "@echo off",
+        "ping 127.0.0.1 -n 3 >nul",  # give the app a moment to exit
+        f'"{path}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS',
+    ]
+    if relaunch:
+        lines.append(f'start "" "{relaunch}"')
+    bat = os.path.join(tempfile.gettempdir(), "obd_toolkit_update.bat")
+    with open(bat, "w", encoding="ascii") as fh:
+        fh.write("\r\n".join(lines) + "\r\n")
+    # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
+    flags = 0x00000008 | 0x00000200 | 0x08000000
+    subprocess.Popen(["cmd", "/c", bat], creationflags=flags, close_fds=True)
 
 
 def _safe_remove(path: str) -> None:
