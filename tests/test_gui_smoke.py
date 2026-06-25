@@ -181,6 +181,13 @@ def test_measure_mode_two_cursors(qapp, tmp_path):
     win.close()
 
 
+def test_safe_session_name():
+    assert gui_app._safe_session_name("  my pull  ") == "my pull"
+    assert gui_app._safe_session_name("boost/test.csv") == "boost_test"
+    assert gui_app._safe_session_name("") is None
+    assert gui_app._safe_session_name('a:b*c?') == "a_b_c"
+
+
 def test_live_pid_presets(qapp, tmp_path):
     from PySide6 import QtCore, QtWidgets
 

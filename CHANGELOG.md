@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-06-25
+
+### Added
+- Optional **session name** field for live OBD logging — name the saved CSV
+  instead of the timestamped default (sanitized to a safe filename).
+
+### Fixed
+- **"Install MCP Server → Claude Code"** failed with *missing required argument
+  'commandOrUrl'* — the variadic `--env` flag was consuming the server name. Now
+  uses the documented `claude mcp add <name> … -- <command>` order.
+- Clearer message when the **Claude Desktop config is invalid JSON** — it now
+  names the file (and line/column) to fix, and never overwrites your other
+  servers.
+
 ## [0.14.0] - 2026-06-25
 
 ### Added
@@ -236,7 +250,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.14.1...HEAD
+[0.14.1]: https://github.com/JWalen/VAGScanner/releases/tag/v0.14.1
 [0.14.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.14.0
 [0.13.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.13.0
 [0.12.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.12.0

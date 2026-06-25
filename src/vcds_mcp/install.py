@@ -71,8 +71,14 @@ def install_claude_desktop(
         try:
             with open(path, encoding="utf-8") as fh:
                 config = json.load(fh) or {}
-        except (OSError, ValueError) as exc:
-            return False, f"Existing config is not valid JSON ({exc}); not overwriting."
+        except ValueError as exc:
+            return False, (
+                "Your existing Claude Desktop config has a JSON syntax error, so it "
+                f"can't be safely updated:\n  {exc}\n\nFix that file (it may contain "
+                f"your other MCP servers), then retry.\nFile: {path}"
+            )
+        except OSError as exc:
+            return False, f"Could not read config: {exc}\nFile: {path}"
         try:
             shutil.copy2(path, path + ".bak")
         except OSError:
@@ -101,8 +107,11 @@ def install_claude_code(logs_dir: str, name: str = DEFAULT_NAME) -> Tuple[bool, 
         subprocess.run([claude, "mcp", "remove", name], capture_output=True, text=True, timeout=30)
     except Exception:  # noqa: BLE001
         pass
-    cmd = [claude, "mcp", "add", "--transport", "stdio",
-           "--env", f"VCDS_LOGS_DIR={logs_dir}", name, "--", command, *args]
+    # Name must come first; options follow; `--` ends options so the command +
+    # its args are positionals. (`--env` is variadic and would otherwise consume
+    # the name/command — the cause of "missing required argument 'commandOrUrl'".)
+    cmd = [claude, "mcp", "add", name, "--transport", "stdio",
+           "--env", f"VCDS_LOGS_DIR={logs_dir}", "--", command, *args]
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
     except Exception as exc:  # noqa: BLE001

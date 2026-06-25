@@ -43,3 +43,28 @@ def test_install_rejects_invalid_json(tmp_path):
 
 def test_claude_code_available_is_bool():
     assert isinstance(install.claude_code_available(), bool)
+
+
+def test_install_claude_code_command_order(monkeypatch):
+    captured = {}
+
+    def fake_run(cmd, **kw):
+        if "add" in cmd:
+            captured["cmd"] = cmd
+
+        class R:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        return R()
+
+    monkeypatch.setattr(install.shutil, "which", lambda n: "claude" if n == "claude" else None)
+    monkeypatch.setattr(install.subprocess, "run", fake_run)
+    ok, _ = install.install_claude_code(r"C:\Logs", name="vcds")
+    assert ok
+    cmd = captured["cmd"]
+    # name must precede --env, and -- must precede the server command (the bug fix)
+    i_name, i_env, i_dd = cmd.index("vcds"), cmd.index("--env"), cmd.index("--")
+    assert i_name < i_env < i_dd
+    assert len(cmd) > i_dd + 1  # a command follows "--"

@@ -614,11 +614,12 @@ if _HAVE_QT:
         finished = QtCore.Signal(object)
         failed = QtCore.Signal(str)
 
-        def __init__(self, logger: "live.LiveLogger", duration_s: float, trigger):
+        def __init__(self, logger: "live.LiveLogger", duration_s: float, trigger, session_name=None):
             super().__init__()
             self.logger = logger
             self.duration_s = duration_s
             self.trigger = trigger
+            self.session_name = session_name
 
         @QtCore.Slot()
         def run(self):
@@ -626,6 +627,7 @@ if _HAVE_QT:
                 result = self.logger.run(
                     self.duration_s,
                     trigger=self.trigger,
+                    session_name=self.session_name,
                     on_sample=lambda t, vals, marker: self.sample.emit(t, dict(vals), marker),
                 )
                 self.finished.emit(result)
@@ -783,6 +785,11 @@ if _HAVE_QT:
             self.rate_spin.setRange(0.5, 20.0)
             self.rate_spin.setValue(5.0)
             run_bar.addWidget(self.rate_spin)
+            run_bar.addWidget(QtWidgets.QLabel("Name:"))
+            self.name_edit = QtWidgets.QLineEdit()
+            self.name_edit.setPlaceholderText("session name (optional)")
+            self.name_edit.setMaximumWidth(180)
+            run_bar.addWidget(self.name_edit)
             self.btn_gauges = QtWidgets.QPushButton("📊 Gauges")
             self.btn_gauges.setToolTip("Open a live gauge dashboard for the selected PIDs")
             run_bar.addWidget(self.btn_gauges)
@@ -1039,8 +1046,10 @@ if _HAVE_QT:
             logs_dir = DEFAULT_LOGS_DIR
             self.logger = live.LiveLogger(self.conn, channels, logs_dir, sample_rate_hz=self.rate_spin.value())
 
+            session_name = _safe_session_name(self.name_edit.text())
             self.thread = QtCore.QThread()
-            self.worker = LiveWorker(self.logger, float(self.dur_spin.value()), self._build_trigger())
+            self.worker = LiveWorker(self.logger, float(self.dur_spin.value()),
+                                     self._build_trigger(), session_name)
             self.worker.moveToThread(self.thread)
             self.thread.started.connect(self.worker.run)
             self.worker.sample.connect(self._on_sample)
@@ -2371,6 +2380,19 @@ if _HAVE_QT:
         def open_in_analyzer(self, path: str):
             self.analyzer.load_csv(path)
             self.tabs.setCurrentWidget(self.analyzer)
+
+
+def _safe_session_name(name: str):
+    """Sanitize a user-entered session name to a safe file stem, or None (auto)."""
+    name = (name or "").strip()
+    if not name:
+        return None
+    if name.lower().endswith(".csv"):
+        name = name[:-4]
+    import re
+
+    name = re.sub(r'[<>:"/\\|?*]', "_", name).strip(" ._")
+    return name or None
 
 
 def _grab_png(widget) -> bytes:
