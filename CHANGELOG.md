@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-06-24
+
+### Added
+- **Dark mode** (View → Dark mode, remembered) for the whole app, plots included.
+- **Live gauge dashboard** (Live tab → "📊 Gauges"): large value tiles for the
+  selected PIDs that update live and turn amber/red when a threshold-trigger
+  rule is exceeded.
+- **Two-cursor measurement** on the plot ("Measure" toggle in the File
+  Analyzer): click to drop a second cursor and read Δtime plus each channel's
+  Δvalue between the two cursors.
+
 ## [0.8.0] - 2026-06-24
 
 ### Added
@@ -163,7 +174,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.9.0
 [0.8.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.8.0
 [0.7.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.7.0
 [0.6.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.6.0

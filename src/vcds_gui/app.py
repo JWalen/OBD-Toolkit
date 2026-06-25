@@ -57,6 +57,36 @@ _PALETTE = [
 if _HAVE_QT:
     pg.setConfigOptions(antialias=True, background="w", foreground="k")
 
+    def apply_theme(dark: bool):
+        """Apply a light or dark Fusion palette to the whole application."""
+        app = QtWidgets.QApplication.instance()
+        if app is None:
+            return
+        app.setStyle("Fusion")
+        if not dark:
+            app.setPalette(app.style().standardPalette())
+            app.setStyleSheet("")
+            return
+        c = QtGui.QColor
+        p = QtGui.QPalette()
+        p.setColor(QtGui.QPalette.Window, c("#1a1a2e"))
+        p.setColor(QtGui.QPalette.WindowText, c("#e6edf6"))
+        p.setColor(QtGui.QPalette.Base, c("#15151f"))
+        p.setColor(QtGui.QPalette.AlternateBase, c("#1f1f33"))
+        p.setColor(QtGui.QPalette.Text, c("#e6edf6"))
+        p.setColor(QtGui.QPalette.Button, c("#22223a"))
+        p.setColor(QtGui.QPalette.ButtonText, c("#e6edf6"))
+        p.setColor(QtGui.QPalette.Highlight, c("#0066CC"))
+        p.setColor(QtGui.QPalette.HighlightedText, c("#ffffff"))
+        p.setColor(QtGui.QPalette.ToolTipBase, c("#22223a"))
+        p.setColor(QtGui.QPalette.ToolTipText, c("#e6edf6"))
+        p.setColor(QtGui.QPalette.PlaceholderText, c("#8a93a6"))
+        p.setColor(QtGui.QPalette.Link, c("#4aa3ff"))
+        for role in (QtGui.QPalette.WindowText, QtGui.QPalette.Text, QtGui.QPalette.ButtonText):
+            p.setColor(QtGui.QPalette.Disabled, role, c("#6b7280"))
+        app.setPalette(p)
+        app.setStyleSheet("QToolTip { color:#e6edf6; background:#22223a; border:1px solid #444; }")
+
     # --------------------------------------------------------------------- #
     # Shared plotting widget
     # --------------------------------------------------------------------- #
@@ -80,6 +110,13 @@ if _HAVE_QT:
 
             self.vline = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen("#888", width=1))
             self.pi.addItem(self.vline, ignoreBounds=True)
+            # Second (measurement) cursor — placed by clicking in measure mode.
+            self.vline_b = pg.InfiniteLine(angle=90, movable=False,
+                                           pen=pg.mkPen("#00C9A7", width=1, style=QtCore.Qt.DashLine))
+            self.vline_b.hide()
+            self.pi.addItem(self.vline_b, ignoreBounds=True)
+            self.measure = False
+            self._cursor_b = None
 
             self.readout = QtWidgets.QLabel("Move cursor over the plot…")
             self.readout.setStyleSheet(
@@ -95,6 +132,7 @@ if _HAVE_QT:
             layout.addWidget(self.readout, 0)
 
             self.plot.scene().sigMouseMoved.connect(self._mouse_moved)
+            self.plot.scene().sigMouseClicked.connect(self._mouse_clicked)
 
         # -- channel management -------------------------------------------- #
         def clear(self):
@@ -140,6 +178,25 @@ if _HAVE_QT:
             for name in self.channels:
                 self._replot(name)
 
+        def set_theme(self, dark: bool):
+            bg = "#15151f" if dark else "w"
+            fg = "#e6edf6" if dark else "k"
+            self.plot.setBackground(bg)
+            for axis in ("left", "bottom"):
+                ax = self.pi.getAxis(axis)
+                ax.setPen(fg)
+                ax.setTextPen(fg)
+            self.readout.setStyleSheet(
+                f"font-family: Consolas, monospace; font-size: 12px; padding: 6px; color: {fg};"
+            )
+
+        def set_measure(self, on: bool):
+            """Toggle two-cursor measurement mode (click sets the second cursor)."""
+            self.measure = on
+            if not on:
+                self._cursor_b = None
+                self.vline_b.hide()
+
         def _scaled(self, entry: dict) -> List[float]:
             v = entry["v"]
             if not self.normalize:
@@ -174,9 +231,23 @@ if _HAVE_QT:
             x = self.pi.vb.mapSceneToView(pos).x()
             self.set_cursor(x)
 
+        def _mouse_clicked(self, ev):
+            if not self.measure:
+                return
+            pos = ev.scenePos()
+            if not self.pi.sceneBoundingRect().contains(pos):
+                return
+            self._cursor_b = self.pi.vb.mapSceneToView(pos).x()
+            self.vline_b.setPos(self._cursor_b)
+            self.vline_b.show()
+
         def set_cursor(self, x: float):
             self.vline.setPos(x)
             lines = [f"<b>t = {x:.3f} s</b>"]
+            measuring = self.measure and self._cursor_b is not None
+            if measuring:
+                lines[0] += (f" &nbsp; <span style='color:#00C9A7'>B = {self._cursor_b:.3f} s "
+                             f"(Δt {x - self._cursor_b:+.3f} s)</span>")
             for name, entry in self.channels.items():
                 if not entry["visible"] or not entry["t"]:
                     continue
@@ -184,10 +255,13 @@ if _HAVE_QT:
                 if val is None:
                     continue
                 unit = f" {entry['unit']}" if entry["unit"] else ""
-                lines.append(
-                    f"<span style='color:{entry['color']}'>&#9632;</span> "
-                    f"{name}: <b>{val:g}</b>{unit}"
-                )
+                line = (f"<span style='color:{entry['color']}'>&#9632;</span> "
+                        f"{name}: <b>{val:g}</b>{unit}")
+                if measuring:
+                    val_b = self._value_at(entry, self._cursor_b)
+                    if val_b is not None:
+                        line += f" &nbsp;<span style='color:#00C9A7'>Δ {val - val_b:+g}</span>"
+                lines.append(line)
             self.readout.setText("<br>".join(lines))
             self.cursorMoved.emit(x)
 
@@ -225,6 +299,8 @@ if _HAVE_QT:
             self.btn_scan = QtWidgets.QPushButton("Open Auto-Scan…")
             self.chk_norm = QtWidgets.QCheckBox("Normalize")
             self.chk_norm.setChecked(True)
+            self.chk_measure = QtWidgets.QCheckBox("Measure")
+            self.chk_measure.setToolTip("Two-cursor mode: click to drop a second cursor and read Δ")
             self.btn_export = QtWidgets.QPushButton("Export View…")
             self.btn_diagnose = QtWidgets.QPushButton("🔍 Diagnose")
             self.btn_diagnose.setToolTip("Analyze the loaded log and/or Auto-Scan for likely faults")
@@ -234,7 +310,7 @@ if _HAVE_QT:
             self.btn_compare.setToolTip("Open a second log and compare it (before/after)")
             self.lbl_info = QtWidgets.QLabel("No file loaded.")
             for w in (self.btn_open, self.btn_scan, self.btn_diagnose, self.btn_perf,
-                      self.btn_compare, self.chk_norm, self.btn_export):
+                      self.btn_compare, self.chk_norm, self.chk_measure, self.btn_export):
                 bar.addWidget(w)
             bar.addWidget(self.lbl_info, 1)
             outer.addLayout(bar)
@@ -301,6 +377,7 @@ if _HAVE_QT:
             self.btn_open.clicked.connect(self.open_csv_dialog)
             self.btn_scan.clicked.connect(self.open_scan_dialog)
             self.chk_norm.toggled.connect(self.plot.set_normalize)
+            self.chk_measure.toggled.connect(self.plot.set_measure)
             self.btn_export.clicked.connect(self.export_view)
             self.btn_diagnose.clicked.connect(self.run_diagnosis)
             self.btn_perf.clicked.connect(self.run_performance)
@@ -542,6 +619,7 @@ if _HAVE_QT:
             self.worker: Optional[LiveWorker] = None
             self.logger: Optional[live.LiveLogger] = None
             self.trigger_rules: List[dict] = []
+            self._gauges = None
             self._build()
 
         def _build(self):
@@ -661,6 +739,9 @@ if _HAVE_QT:
             self.rate_spin.setRange(0.5, 20.0)
             self.rate_spin.setValue(5.0)
             run_bar.addWidget(self.rate_spin)
+            self.btn_gauges = QtWidgets.QPushButton("📊 Gauges")
+            self.btn_gauges.setToolTip("Open a live gauge dashboard for the selected PIDs")
+            run_bar.addWidget(self.btn_gauges)
             self.btn_start = QtWidgets.QPushButton("Start Logging")
             self.btn_stop = QtWidgets.QPushButton("Stop")
             self.btn_stop.setEnabled(False)
@@ -679,6 +760,7 @@ if _HAVE_QT:
             self.btn_clear_dtc.clicked.connect(self.clear_dtcs)
             self.btn_start.clicked.connect(self.start_logging)
             self.btn_stop.clicked.connect(self.stop_logging)
+            self.btn_gauges.clicked.connect(self.open_gauges)
             self.capture_list.itemDoubleClicked.connect(self._open_capture)
 
             self.scan_ports()
@@ -879,9 +961,21 @@ if _HAVE_QT:
             if self.logger is not None:
                 self.logger.stop()
 
+        def open_gauges(self):
+            channels = self._selected_channels()
+            if not channels:
+                QtWidgets.QMessageBox.information(
+                    self, "Gauges", "Connect and select at least one PID first.")
+                return
+            self._gauges = GaugeWindow(channels, self)
+            self._gauges.set_thresholds(self.trigger_rules)
+            self._gauges.show()
+
         @QtCore.Slot(float, dict, str)
         def _on_sample(self, t, values, marker):
             self.plot.append_sample(t, values)
+            if self._gauges is not None and self._gauges.isVisible():
+                self._gauges.update_values(values)
             if marker:
                 self.run_status.setText(f"Logging… (event at t={t:.1f}s)")
 
@@ -1526,6 +1620,77 @@ if _HAVE_QT:
             self.results.setPlainText("\n\n".join(lines))
 
     # --------------------------------------------------------------------- #
+    # Live gauge dashboard
+    # --------------------------------------------------------------------- #
+    class GaugeTile(QtWidgets.QFrame):
+        def __init__(self, name: str, unit: str, parent=None):
+            super().__init__(parent)
+            self.name = name
+            self.warn = None
+            self.crit = None
+            self.setMinimumSize(160, 96)
+            self._base = "GaugeTile { border-radius: 8px; border: 1px solid #888; }"
+            self.setStyleSheet(self._base)
+            v = QtWidgets.QVBoxLayout(self)
+            self.l_name = QtWidgets.QLabel(name)
+            self.l_name.setStyleSheet("font-size: 11px; color: #888;")
+            self.l_val = QtWidgets.QLabel("—")
+            f = self.l_val.font()
+            f.setPointSize(24)
+            f.setBold(True)
+            self.l_val.setFont(f)
+            self.l_unit = QtWidgets.QLabel(unit)
+            self.l_unit.setStyleSheet("font-size: 10px; color: #888;")
+            for w in (self.l_name, self.l_val, self.l_unit):
+                v.addWidget(w)
+
+        def set_value(self, value):
+            if value is None:
+                self.l_val.setText("—")
+                return
+            self.l_val.setText(f"{value:g}")
+            color = None
+            if self.crit is not None and value >= self.crit:
+                color = "#E53E3E"
+            elif self.warn is not None and value >= self.warn:
+                color = "#DD6B20"
+            if color:
+                self.setStyleSheet(
+                    f"GaugeTile {{ border-radius: 8px; border: 2px solid {color}; "
+                    f"background: {color}33; }}"
+                )
+            else:
+                self.setStyleSheet(self._base)
+
+    class GaugeWindow(QtWidgets.QWidget):
+        def __init__(self, channels, parent=None):
+            super().__init__(parent)
+            self.setWindowTitle("Live Gauges")
+            self.setWindowFlag(QtCore.Qt.Window)
+            self.resize(680, 380)
+            grid = QtWidgets.QGridLayout(self)
+            self.tiles = {}
+            cols = 4
+            for i, ch in enumerate(channels):
+                tile = GaugeTile(ch.name, ch.unit)
+                self.tiles[ch.name] = tile
+                grid.addWidget(tile, i // cols, i % cols)
+
+        def set_thresholds(self, rules):
+            for name, tile in self.tiles.items():
+                tile.warn = None
+                tile.crit = None
+                for r in rules:
+                    chan = str(r.get("channel", "")).lower()
+                    if chan and chan in name.lower() and r.get("op") in (">", ">="):
+                        tile.crit = float(r.get("value"))
+
+        def update_values(self, values):
+            for name, tile in self.tiles.items():
+                if name in values:
+                    tile.set_value(values[name])
+
+    # --------------------------------------------------------------------- #
     # Tab 3 — AI Assistant
     # --------------------------------------------------------------------- #
     class AiChatWorker(QtCore.QObject):
@@ -1753,6 +1918,7 @@ if _HAVE_QT:
 
             self.settings = QtCore.QSettings("DeltaModTech", "VCDS Toolkit")
             self._build_menu()
+            self._apply_theme(self.settings.value("ui/dark", False, type=bool))
             self.statusBar().showMessage(
                 f"Logs dir: {DEFAULT_LOGS_DIR}   ·   Press F1 for help"
             )
@@ -1762,6 +1928,13 @@ if _HAVE_QT:
             QtCore.QTimer.singleShot(1500, self._maybe_startup_update_check)
 
         def _build_menu(self):
+            view_menu = self.menuBar().addMenu("&View")
+            self.act_dark = QtGui.QAction("&Dark mode", self)
+            self.act_dark.setCheckable(True)
+            self.act_dark.setChecked(self.settings.value("ui/dark", False, type=bool))
+            self.act_dark.toggled.connect(self._toggle_theme)
+            view_menu.addAction(self.act_dark)
+
             tools_menu = self.menuBar().addMenu("&Tools")
             mcp_action = QtGui.QAction("Install &MCP Server (for Claude)…", self)
             mcp_action.triggered.connect(self.show_mcp_install)
@@ -1808,6 +1981,15 @@ if _HAVE_QT:
         def show_tour(self, force: bool = False):
             show_default = self.settings.value("ui/show_tour", True, type=bool)
             QuickTourDialog(self.settings, show_default, self).exec()
+
+        def _apply_theme(self, dark: bool):
+            apply_theme(dark)
+            self.analyzer.plot.set_theme(dark)
+            self.live_tab.plot.set_theme(dark)
+
+        def _toggle_theme(self, on: bool):
+            self.settings.setValue("ui/dark", on)
+            self._apply_theme(on)
 
         def show_mcp_install(self):
             McpInstallDialog(DEFAULT_LOGS_DIR, self).exec()

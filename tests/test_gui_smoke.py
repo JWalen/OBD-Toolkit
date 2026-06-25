@@ -144,6 +144,42 @@ def test_performance_dialog_builds(qapp, tmp_path):
     win.close()
 
 
+def test_dark_mode_toggle(qapp):
+    win = gui_app.MainWindow()
+    win._apply_theme(True)   # should not raise; plots re-themed
+    assert win.analyzer.plot.plot.backgroundBrush().color().name() == "#15151f"
+    win._apply_theme(False)
+    win.close()
+
+
+def test_measure_mode_two_cursors(qapp, tmp_path):
+    path = tmp_path / "m.csv"
+    path.write_text("TIME,Boost\ns,mbar\n0,1000\n1,1200\n2,1400\n3,1100\n", encoding="utf-8")
+    win = gui_app.MainWindow()
+    win.analyzer.load_csv(str(path))
+    plot = win.analyzer.plot
+    plot.set_measure(True)
+    plot._cursor_b = 1.0   # simulate a placed second cursor
+    plot.vline_b.show()
+    plot.set_cursor(3.0)
+    assert "Δt" in plot.readout.text()
+    win.close()
+
+
+def test_live_gauges_window(qapp):
+    win = gui_app.MainWindow()
+    tab = win.live_tab
+    from vcds_obd.live import LiveChannel
+    chans = [LiveChannel("Intake MAP", "kPa", "INTAKE_PRESSURE"),
+             LiveChannel("Coolant Temp", "°C", "COOLANT_TEMP")]
+    gw = gui_app.GaugeWindow(chans)
+    gw.set_thresholds([{"channel": "MAP", "op": ">", "value": 180}])
+    gw.update_values({"Intake MAP": 200, "Coolant Temp": 90})
+    assert gw.tiles["Intake MAP"].l_val.text() == "200"
+    assert gw.tiles["Intake MAP"].crit == 180
+    win.close()
+
+
 def test_compare_dialog_builds(qapp, tmp_path):
     from PySide6 import QtWidgets
     from vcds_core.compare import compare_logs
