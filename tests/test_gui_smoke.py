@@ -132,6 +132,42 @@ def test_diagnosis_dialog_builds(qapp, samples_dir):
     win.close()
 
 
+def test_vcds_logging_help_present(qapp):
+    text = gui_app.VCDS_LOG_HTML
+    assert "Measuring" in text and "Log" in text
+    assert "VCDS_LOGS_DIR" in text
+    assert r"C:\Ross-Tech\VCDS\Logs" in text
+    assert "Getting a log file out of VCDS" in gui_app.HELP_HTML
+
+
+def test_diagnosis_dialog_has_save_button(qapp, samples_dir):
+    from vcds_core.diagnose import diagnose as run_diagnose
+
+    win = gui_app.MainWindow()
+    win.analyzer.load_scan(samples_dir["autoscan"])
+    report = run_diagnose(scan=win.analyzer.scan)
+    dlg = gui_app.DiagnosisDialog(report, None, win.analyzer.scan, None, win)
+    assert dlg.btn_save is not None
+    win.close()
+
+
+def test_pdf_export_path(qapp, tmp_path, samples_dir):
+    from PySide6 import QtGui
+    from vcds_core.diagnose import diagnose as run_diagnose
+    from vcds_core.report import build_html_report
+
+    scan = parse.parse_autoscan(samples_dir["autoscan"])
+    report = run_diagnose(scan=scan)
+    html = build_html_report(report, scan=scan, version="0.3.0")
+    out = tmp_path / "report.pdf"
+    doc = QtGui.QTextDocument()
+    doc.setHtml(html)
+    writer = QtGui.QPdfWriter(str(out))
+    writer.setPageSize(QtGui.QPageSize(QtGui.QPageSize.A4))
+    doc.print_(writer)
+    assert out.is_file() and out.stat().st_size > 0
+
+
 def test_analyzer_loads_autoscan(qapp, samples_dir):
     win = gui_app.MainWindow()
     tab = win.analyzer

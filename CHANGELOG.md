@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-24
+
+### Added
+- **Diagnostic report export** (PDF or HTML) from the Diagnosis dialog —
+  prioritized findings with causes, channel-statistics table, scan faults and
+  the current plot embedded. Built by the dependency-free
+  `vcds_core.report.build_html_report`; the GUI renders PDF via Qt.
+- **In-app VCDS logging help**: a "How to Log in VCDS…" Help-menu item and a
+  matching section in the User Guide, explaining how to produce a `.CSV` with
+  Advanced Measuring Values / Measuring Blocks and where it's saved.
+
 ## [0.3.0] - 2026-06-24
 
 ### Added
@@ -94,7 +105,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.4.0
 [0.3.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.3.0
 [0.2.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.2.0
 [0.1.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.1.0

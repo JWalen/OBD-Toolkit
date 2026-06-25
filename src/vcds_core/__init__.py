@@ -25,15 +25,18 @@ from .parse import (
 from . import compute, knowledge
 from .compute import add_computed_channels
 from .diagnose import DiagnosticReport, Finding, diagnose
+from .report import build_html_report, save_html_report
 
 __all__ = [
     "__version__",
     "add_computed_channels",
+    "build_html_report",
     "compute",
     "diagnose",
     "DiagnosticReport",
     "Finding",
     "knowledge",
+    "save_html_report",
     "AutoScan",
     "Channel",
     "Event",

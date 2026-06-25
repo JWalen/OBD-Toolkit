@@ -23,10 +23,12 @@ import bisect
 import os
 import sys
 import threading
+import time
 from typing import Dict, List, Optional, Tuple
 
 from vcds_core import compute, knowledge, parse
 from vcds_core.diagnose import diagnose as run_diagnose
+from vcds_core.report import build_html_report
 from vcds_gui import updater
 from vcds_obd import live
 
@@ -392,7 +394,13 @@ if _HAVE_QT:
                 )
                 return
             report = run_diagnose(scan=self.scan, log=self.mlog)
-            DiagnosisDialog(report, self).exec()
+            plot_png = None
+            if self.mlog is not None:
+                try:
+                    plot_png = _grab_png(self.plot.plot)
+                except Exception:  # noqa: BLE001
+                    plot_png = None
+            DiagnosisDialog(report, self.mlog, self.scan, plot_png, self).exec()
 
         # -- channel toggling ---------------------------------------------- #
         def _chan_toggled(self, item: "QtWidgets.QListWidgetItem"):
@@ -793,6 +801,30 @@ if _HAVE_QT:
     # --------------------------------------------------------------------- #
     # Help
     # --------------------------------------------------------------------- #
+    VCDS_LOG_HTML = """
+    <p>This app reads the <code>.CSV</code> files VCDS writes — it can't drive
+    VCDS itself. To create one in the Ross-Tech VCDS application:</p>
+    <ul>
+      <li><b>Advanced Measuring Values</b> (newer cars, recommended): Select
+          Control Module (e.g. 01&nbsp;-&nbsp;Engine) &rarr;
+          <b>[Adv.&nbsp;Measuring&nbsp;Values]</b> &rarr; tick the measurements
+          you want (include the <i>Specified</i> <b>and</b> <i>Actual</i> pairs
+          for boost/lambda so divergence detection works) &rarr; <b>[Log]</b>
+          &rarr; do your drive/pull &rarr; <b>[Stop]</b>, then
+          <b>[Done,&nbsp;Go&nbsp;Back]</b>.</li>
+      <li><b>Measuring Blocks</b> (older modules): Select Control Module &rarr;
+          <b>[Measuring&nbsp;Blocks&nbsp;-&nbsp;08]</b> &rarr; enter the group
+          number(s) &rarr; <b>[Log]</b> &rarr; choose the fields &rarr;
+          <b>[Done,&nbsp;Close]</b>.</li>
+    </ul>
+    <p>VCDS saves logs to <code>C:\\Ross-Tech\\VCDS\\Logs</code> — the folder this
+    app reads (shown in the status bar; override with the
+    <code>VCDS_LOGS_DIR</code> environment variable). Then use
+    <b>Open&nbsp;Measuring&nbsp;CSV…</b> and <b>🔍&nbsp;Diagnose</b>.</p>
+    <p class="muted">Tip: a steady wide-open-throttle pull makes boost/power
+    issues easiest to spot.</p>
+    """
+
     HELP_HTML = """
     <h2>VCDS Toolkit — User Guide</h2>
     <p>Analyze VCDS logs and capture live OBD-II data from a VAG/Audi car.
@@ -810,6 +842,8 @@ if _HAVE_QT:
           locked to its own app and cannot be used here.</li>
     </ul>
 
+    <h3>Getting a log file out of VCDS</h3>
+    """ + VCDS_LOG_HTML + """
     <h3>Tab 1 &mdash; File Analyzer</h3>
     <ol>
       <li><b>Open Measuring CSV…</b> loads a log; its channels appear in the left
@@ -886,8 +920,12 @@ if _HAVE_QT:
     class DiagnosisDialog(QtWidgets.QDialog):
         """Shows a DiagnosticReport: prioritized findings with causes."""
 
-        def __init__(self, report, parent=None):
+        def __init__(self, report, log=None, scan=None, plot_png=None, parent=None):
             super().__init__(parent)
+            self._report = report
+            self._log = log
+            self._scan = scan
+            self._plot_png = plot_png
             self.setWindowTitle("Diagnosis")
             self.resize(740, 620)
             v = QtWidgets.QVBoxLayout(self)
@@ -932,9 +970,39 @@ if _HAVE_QT:
             v.addWidget(tree, 1)
 
             buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Close)
+            self.btn_save = buttons.addButton("Save Report…", QtWidgets.QDialogButtonBox.ActionRole)
+            self.btn_save.clicked.connect(self._save_report)
             buttons.rejected.connect(self.reject)
             buttons.accepted.connect(self.accept)
             v.addWidget(buttons)
+
+        def _save_report(self):
+            from vcds_core import __version__ as _ver
+
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(
+                self, "Save Diagnostic Report", DEFAULT_LOGS_DIR,
+                "PDF document (*.pdf);;HTML page (*.html)",
+            )
+            if not path:
+                return
+            html = build_html_report(
+                self._report, log=self._log, scan=self._scan, plot_png=self._plot_png,
+                generated=time.strftime("%Y-%m-%d %H:%M"), version=_ver,
+            )
+            try:
+                if path.lower().endswith(".pdf"):
+                    doc = QtGui.QTextDocument()
+                    doc.setHtml(html)
+                    writer = QtGui.QPdfWriter(path)
+                    writer.setPageSize(QtGui.QPageSize(QtGui.QPageSize.A4))
+                    doc.print_(writer)
+                else:
+                    with open(path, "w", encoding="utf-8") as fh:
+                        fh.write(html)
+            except Exception as exc:  # noqa: BLE001
+                QtWidgets.QMessageBox.critical(self, "Save failed", str(exc))
+                return
+            QtWidgets.QMessageBox.information(self, "Report saved", f"Saved to\n{path}")
 
     # First-run quick tour pages: (title, html body).
     TOUR_PAGES = [
@@ -1186,6 +1254,9 @@ if _HAVE_QT:
             tour = QtGui.QAction("&Quick Tour", self)
             tour.triggered.connect(lambda: self.show_tour(force=True))
             help_menu.addAction(tour)
+            vcds_log = QtGui.QAction("How to &Log in VCDS…", self)
+            vcds_log.triggered.connect(self.show_vcds_logging)
+            help_menu.addAction(vcds_log)
             guide = QtGui.QAction("User &Guide", self)
             guide.setShortcut(QtGui.QKeySequence.HelpContents)  # F1
             guide.triggered.connect(self.show_help)
@@ -1223,6 +1294,21 @@ if _HAVE_QT:
 
         def show_help(self):
             HelpDialog(self._version, self).exec()
+
+        def show_vcds_logging(self):
+            dlg = QtWidgets.QDialog(self)
+            dlg.setWindowTitle("How to Log in VCDS")
+            dlg.resize(580, 470)
+            lay = QtWidgets.QVBoxLayout(dlg)
+            browser = QtWidgets.QTextBrowser()
+            browser.setOpenExternalLinks(True)
+            browser.setHtml("<h2>Getting a log file out of VCDS</h2>" + VCDS_LOG_HTML)
+            lay.addWidget(browser)
+            buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Close)
+            buttons.rejected.connect(dlg.reject)
+            buttons.accepted.connect(dlg.accept)
+            lay.addWidget(buttons)
+            dlg.exec()
 
         def show_about(self):
             QtWidgets.QMessageBox.about(
@@ -1354,6 +1440,15 @@ if _HAVE_QT:
         def open_in_analyzer(self, path: str):
             self.analyzer.load_csv(path)
             self.tabs.setCurrentWidget(self.analyzer)
+
+
+def _grab_png(widget) -> bytes:
+    """Render a Qt widget to PNG bytes (for embedding the plot in a report)."""
+    pixmap = widget.grab()
+    buffer = QtCore.QBuffer()
+    buffer.open(QtCore.QIODevice.WriteOnly)
+    pixmap.save(buffer, "PNG")
+    return bytes(buffer.data())
 
 
 def _find_app_icon() -> Optional[str]:
