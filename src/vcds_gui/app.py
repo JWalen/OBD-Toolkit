@@ -25,7 +25,8 @@ import sys
 import threading
 from typing import Dict, List, Optional, Tuple
 
-from vcds_core import parse
+from vcds_core import compute, knowledge, parse
+from vcds_core.diagnose import diagnose as run_diagnose
 from vcds_gui import updater
 from vcds_obd import live
 
@@ -207,6 +208,7 @@ if _HAVE_QT:
         def __init__(self, parent=None):
             super().__init__(parent)
             self.mlog: Optional[parse.MeasuringLog] = None
+            self.scan = None
             self.rules: List[dict] = []
             self._build()
 
@@ -220,8 +222,10 @@ if _HAVE_QT:
             self.chk_norm = QtWidgets.QCheckBox("Normalize")
             self.chk_norm.setChecked(True)
             self.btn_export = QtWidgets.QPushButton("Export View…")
+            self.btn_diagnose = QtWidgets.QPushButton("🔍 Diagnose")
+            self.btn_diagnose.setToolTip("Analyze the loaded log and/or Auto-Scan for likely faults")
             self.lbl_info = QtWidgets.QLabel("No file loaded.")
-            for w in (self.btn_open, self.btn_scan, self.chk_norm, self.btn_export):
+            for w in (self.btn_open, self.btn_scan, self.btn_diagnose, self.chk_norm, self.btn_export):
                 bar.addWidget(w)
             bar.addWidget(self.lbl_info, 1)
             outer.addLayout(bar)
@@ -289,6 +293,7 @@ if _HAVE_QT:
             self.btn_scan.clicked.connect(self.open_scan_dialog)
             self.chk_norm.toggled.connect(self.plot.set_normalize)
             self.btn_export.clicked.connect(self.export_view)
+            self.btn_diagnose.clicked.connect(self.run_diagnosis)
             self.chan_list.itemChanged.connect(self._chan_toggled)
             self.btn_find.clicked.connect(lambda: self.run_events(use_rules=False))
             self.btn_apply_rules.clicked.connect(lambda: self.run_events(use_rules=True))
@@ -307,6 +312,7 @@ if _HAVE_QT:
         def load_csv(self, path: str):
             try:
                 self.mlog = parse.parse_measuring_log(path)
+                compute.add_computed_channels(self.mlog)  # adds Fuel Trim Total, AFR, …
             except Exception as exc:  # noqa: BLE001
                 QtWidgets.QMessageBox.critical(self, "Parse error", str(exc))
                 return
@@ -316,11 +322,17 @@ if _HAVE_QT:
             for ch in self.mlog.channels:
                 rs = self.mlog.raw_series[ch.name]
                 color = self.plot.add_channel(ch.name, rs["time"], rs["value"], ch.unit)
-                item = QtWidgets.QListWidgetItem(f"{ch.name}  [{ch.unit}]")
+                computed = ch.group == "(computed)"
+                label = f"{ch.name}  [{ch.unit}]" + ("  ✚" if computed else "")
+                item = QtWidgets.QListWidgetItem(label)
                 item.setFlags(item.flags() | QtCore.Qt.ItemIsUserCheckable)
-                item.setCheckState(QtCore.Qt.Checked)
+                # Computed channels start hidden to avoid cluttering the plot.
+                item.setCheckState(QtCore.Qt.Unchecked if computed else QtCore.Qt.Checked)
+                self.plot.set_visible(ch.name, not computed)
                 item.setData(QtCore.Qt.UserRole, ch.name)
                 item.setForeground(QtGui.QColor(color))
+                if computed:
+                    item.setToolTip("Computed (derived) channel")
                 self.chan_list.addItem(item)
             self.chan_list.blockSignals(False)
             self.plot.pi.enableAutoRange()
@@ -344,6 +356,7 @@ if _HAVE_QT:
             except Exception as exc:  # noqa: BLE001
                 QtWidgets.QMessageBox.critical(self, "Parse error", str(exc))
                 return
+            self.scan = scan
             self.scan_info.setText(
                 f"<b>VIN:</b> {scan.vin or '?'}<br><b>Mileage:</b> {scan.mileage or '?'}"
                 f"<br><b>Total faults:</b> {scan.total_faults}"
@@ -355,9 +368,31 @@ if _HAVE_QT:
                     node.setForeground(0, QtGui.QColor("#E53E3E"))
                 for f in m.faults:
                     child = QtWidgets.QTreeWidgetItem([f"{f.code} — {f.description}", f.status_detail or ""])
+                    # Enrich with likely causes from the knowledge base.
+                    k = knowledge.lookup(f.code)
+                    if not k.known and f.status_detail:
+                        import re as _re
+
+                        mm = _re.search(r"\b([PUBC][0-9]{4})\b", f.status_detail)
+                        if mm:
+                            k = knowledge.lookup(mm.group(1))
+                    if k.causes:
+                        child.setToolTip(0, "Likely causes: " + "; ".join(k.causes))
+                        cause_node = QtWidgets.QTreeWidgetItem(["Likely: " + "; ".join(k.causes[:3]), ""])
+                        cause_node.setForeground(0, QtGui.QColor("#718096"))
+                        child.addChild(cause_node)
                     node.addChild(child)
                 self.scan_tree.addTopLevelItem(node)
                 node.setExpanded(True)
+
+        def run_diagnosis(self):
+            if self.mlog is None and self.scan is None:
+                QtWidgets.QMessageBox.information(
+                    self, "Diagnose", "Open a measuring CSV and/or an Auto-Scan first."
+                )
+                return
+            report = run_diagnose(scan=self.scan, log=self.mlog)
+            DiagnosisDialog(report, self).exec()
 
         # -- channel toggling ---------------------------------------------- #
         def _chan_toggled(self, item: "QtWidgets.QListWidgetItem"):
@@ -842,6 +877,64 @@ if _HAVE_QT:
             buttons.rejected.connect(self.reject)
             buttons.accepted.connect(self.accept)
             layout.addWidget(buttons)
+
+    _SEVERITY_COLORS = {
+        "critical": "#E53E3E", "high": "#DD6B20", "medium": "#D69E2E",
+        "low": "#3182CE", "info": "#718096",
+    }
+
+    class DiagnosisDialog(QtWidgets.QDialog):
+        """Shows a DiagnosticReport: prioritized findings with causes."""
+
+        def __init__(self, report, parent=None):
+            super().__init__(parent)
+            self.setWindowTitle("Diagnosis")
+            self.resize(740, 620)
+            v = QtWidgets.QVBoxLayout(self)
+
+            head = f"<b>{report.headline}</b>"
+            if report.vin:
+                head += (f"<br><span style='color:#718096'>VIN {report.vin}"
+                         f"{('  ·  ' + report.mileage) if report.mileage else ''}</span>")
+            head_label = QtWidgets.QLabel(head)
+            head_label.setWordWrap(True)
+            v.addWidget(head_label)
+
+            summary = report.summary
+            chips = "   ".join(
+                f"<span style='color:{_SEVERITY_COLORS.get(k, '#000')}'>● {k}: {summary[k]}</span>"
+                for k in ("critical", "high", "medium", "low", "info") if summary.get(k)
+            )
+            if chips:
+                v.addWidget(QtWidgets.QLabel(chips))
+
+            tree = QtWidgets.QTreeWidget()
+            tree.setHeaderLabels(["Finding", "Severity"])
+            tree.setColumnWidth(0, 540)
+            for f in report.findings:
+                node = QtWidgets.QTreeWidgetItem([f.title, f.severity.upper()])
+                color = QtGui.QColor(_SEVERITY_COLORS.get(f.severity, "#000000"))
+                node.setForeground(1, color)
+                font = node.font(0)
+                font.setBold(True)
+                node.setFont(0, font)
+                node.addChild(QtWidgets.QTreeWidgetItem([f.detail, ""]))
+                if f.causes:
+                    causes = QtWidgets.QTreeWidgetItem(["Likely causes (most likely first):", ""])
+                    for c in f.causes:
+                        causes.addChild(QtWidgets.QTreeWidgetItem([f"•  {c}", ""]))
+                    node.addChild(causes)
+                    causes.setExpanded(True)
+                tree.addTopLevelItem(node)
+                node.setExpanded(True)
+            if not report.findings:
+                tree.addTopLevelItem(QtWidgets.QTreeWidgetItem(["No faults or abnormal readings.", ""]))
+            v.addWidget(tree, 1)
+
+            buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Close)
+            buttons.rejected.connect(self.reject)
+            buttons.accepted.connect(self.accept)
+            v.addWidget(buttons)
 
     # First-run quick tour pages: (title, html body).
     TOUR_PAGES = [

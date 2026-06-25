@@ -22,9 +22,18 @@ from .parse import (
     parse_autoscan,
     parse_measuring_log,
 )
+from . import compute, knowledge
+from .compute import add_computed_channels
+from .diagnose import DiagnosticReport, Finding, diagnose
 
 __all__ = [
     "__version__",
+    "add_computed_channels",
+    "compute",
+    "diagnose",
+    "DiagnosticReport",
+    "Finding",
+    "knowledge",
     "AutoScan",
     "Channel",
     "Event",

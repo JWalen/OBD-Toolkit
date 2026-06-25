@@ -105,6 +105,33 @@ def test_update_banner_shows_on_found(qapp):
     win.close()
 
 
+def test_analyzer_adds_computed_channels(qapp, tmp_path):
+    path = tmp_path / "trims.csv"
+    path.write_text(
+        "TIME,Engine RPM,Short Fuel Trim 1,Long Fuel Trim 1\n"
+        "s,/min,%,%\n0,800,2,12\n1,820,3,14\n2,810,2,16\n",
+        encoding="utf-8",
+    )
+    win = gui_app.MainWindow()
+    win.analyzer.load_csv(str(path))
+    assert "Fuel Trim Total" in win.analyzer.plot.channels
+    assert "AFR (estimated)" in win.analyzer.plot.channels
+    win.close()
+
+
+def test_diagnosis_dialog_builds(qapp, samples_dir):
+    from vcds_core.diagnose import diagnose as run_diagnose
+
+    win = gui_app.MainWindow()
+    win.analyzer.load_scan(samples_dir["autoscan"])
+    assert win.analyzer.scan is not None
+    report = run_diagnose(scan=win.analyzer.scan)
+    dlg = gui_app.DiagnosisDialog(report, win)
+    tree = dlg.findChild(QtWidgets.QTreeWidget)
+    assert tree is not None and tree.topLevelItemCount() == len(report.findings)
+    win.close()
+
+
 def test_analyzer_loads_autoscan(qapp, samples_dir):
     win = gui_app.MainWindow()
     tab = win.analyzer

@@ -22,7 +22,8 @@ from dataclasses import asdict
 from typing import List, Optional
 
 # vcds_core is dependency-free and importable as a sibling package.
-from vcds_core import parse
+from vcds_core import compute, knowledge, parse
+from vcds_core.diagnose import diagnose as run_diagnose
 
 try:
     from mcp.server.fastmcp import FastMCP
@@ -181,6 +182,7 @@ def read_measuring_log(
     max_points: int = 500,
     include_series: bool = False,
     channels: Optional[List[str]] = None,
+    include_computed: bool = False,
 ) -> dict:
     """Parse a VCDS measuring-value CSV: detected structure, channels and stats.
 
@@ -197,6 +199,8 @@ def read_measuring_log(
     """
     path = _safe_path(filename)
     mlog = parse.parse_measuring_log(path, max_points=max_points)
+    if include_computed:
+        compute.add_computed_channels(mlog, max_points=max_points)
     out = _log_summary(mlog)
     if include_series:
         wanted = [c.lower() for c in channels] if channels else None
@@ -255,6 +259,78 @@ def find_log_events(
     mlog = parse.parse_measuring_log(path, max_points=max_points)
     events = parse.find_events(mlog, rules=rules)
     return {"file": os.path.basename(mlog.file), "count": len(events), "events": [_event_dict(e) for e in events]}
+
+
+@mcp.tool()
+def lookup_dtc(code: str) -> dict:
+    """Look up a diagnostic trouble code's meaning, severity and likely causes.
+
+    Args:
+        code: A DTC such as "P0299" (leading apostrophes / lower-case tolerated).
+
+    Returns:
+        Description, severity, affected system, likely causes (most-likely
+        first), any VAG-specific note, and whether it was an exact match.
+    """
+    k = knowledge.lookup(code)
+    return {
+        "code": k.code,
+        "description": k.description,
+        "severity": k.severity,
+        "system": k.system,
+        "causes": k.causes,
+        "notes": k.notes,
+        "known": k.known,
+    }
+
+
+def _finding_dict(f) -> dict:
+    return {
+        "severity": f.severity,
+        "title": f.title,
+        "detail": f.detail,
+        "category": f.category,
+        "causes": f.causes,
+        "evidence": f.evidence,
+        "code": f.code,
+    }
+
+
+@mcp.tool()
+def diagnose_file(filename: Optional[str] = None, autoscan: Optional[str] = None) -> dict:
+    """Diagnose a measuring log and/or an Auto-Scan into prioritized findings.
+
+    Combines the fault-code knowledge base with data-driven symptom detection
+    (lean/rich fuel trims, overheating, boost shortfall, rising misfire
+    counters, heat soak) and returns findings sorted most-severe first, each
+    with likely causes.
+
+    Args:
+        filename: Measuring-log CSV file name in the logs folder (optional).
+        autoscan: Auto-Scan TXT file name in the logs folder (optional).
+            At least one of filename/autoscan is required.
+
+    Returns:
+        VIN/mileage (when available), a one-line headline, a severity summary
+        and the list of findings.
+    """
+    scan = log = None
+    if autoscan:
+        scan = parse.parse_autoscan(_safe_path(autoscan))
+    if filename:
+        log = parse.parse_measuring_log(_safe_path(filename))
+        compute.add_computed_channels(log)
+    if scan is None and log is None:
+        return {"error": "Provide a measuring-log filename and/or an autoscan filename."}
+    report = run_diagnose(scan=scan, log=log)
+    return {
+        "vin": report.vin,
+        "mileage": report.mileage,
+        "headline": report.headline,
+        "summary": report.summary,
+        "findings": [_finding_dict(f) for f in report.findings],
+        "notes": report.notes,
+    }
 
 
 # --------------------------------------------------------------------------- #

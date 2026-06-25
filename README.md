@@ -186,6 +186,9 @@ claude mcp add --transport stdio --env VCDS_LOGS_DIR=C:\Ross-Tech\VCDS\Logs vcds
 File tools: `list_logs`, `read_autoscan`, `read_measuring_log`, `channel_stats`,
 `find_log_events`.
 
+Diagnostic tools: `lookup_dtc` (code → description, severity, likely causes) and
+`diagnose_file` (a scan and/or log → prioritized findings with causes).
+
 Live OBD tools (require an ELM327 on the machine running the server; they degrade
 gracefully when none is connected): `list_serial_ports`, `obd_status`,
 `read_live_dtcs`, `snapshot_pids`, `run_obd_session`.
@@ -198,6 +201,9 @@ gracefully when none is connected): `list_serial_ports`, `obd_status`,
   which channels diverge most."*
 - *"Read the latest Auto-Scan and group the faults by module — which are
   intermittent?"*
+- *"Diagnose the latest scan plus today's boost log and tell me the most likely
+  cause, ranked."*
+- *"What does P0299 mean and what are the most likely causes on a 3.0T?"*
 - *"Find events in `boost_pull.CSV` where Boost (actual) drops below 1700 mbar."*
 - *"Connect to the ELM327 on COM5, show me the supported PIDs and any stored
   DTCs."*

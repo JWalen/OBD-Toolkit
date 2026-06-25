@@ -61,8 +61,26 @@ async def test_mcp_handshake_and_file_tools(samples_dir):
                 "read_measuring_log",
                 "channel_stats",
                 "find_log_events",
+                "lookup_dtc",
+                "diagnose_file",
             ):
                 assert expected in names, f"missing tool {expected}"
+
+            # lookup_dtc returns knowledge for a known code
+            res = await session.call_tool("lookup_dtc", {"code": "P0299"})
+            dtc = _content_json(res)
+            assert dtc["known"] and dtc["severity"] == "high"
+            assert dtc["causes"]
+
+            # diagnose_file combines scan + log into prioritized findings
+            res = await session.call_tool(
+                "diagnose_file",
+                {"autoscan": "autoscan.TXT", "filename": "advanced_uds.CSV"},
+            )
+            report = _content_json(res)
+            assert report["vin"] == "WAUZZZ8K9BA123456"
+            assert report["findings"]
+            assert any(f["causes"] for f in report["findings"])
 
             # list_logs classifies both files
             res = await session.call_tool("list_logs", {"kind": "all", "limit": 50})

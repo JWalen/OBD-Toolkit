@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-24
+
+### Added
+- **Fault-code knowledge base** (`vcds_core.knowledge`): descriptions, severity
+  and most-likely causes for common VAG/Audi + generic OBD-II codes, plus
+  VAG known-issue notes (PCV, carbon build-up, diverter valve, HPFP follower,
+  timing chain). Structural decoding gives even unknown codes a sensible
+  category. Enriches Auto-Scans and gives raw ELM327 DTCs real meaning.
+- **Diagnostic engine** (`vcds_core.diagnose`): turns a scan and/or a measuring
+  log into prioritized findings with likely causes, combining fault codes with
+  data symptoms — lean/rich fuel trims, overheating, target-vs-actual boost
+  shortfall, rising misfire counters and intake heat-soak.
+- **Computed channels** (`vcds_core.compute`): Fuel Trim Total, AFR (estimated)
+  and derived boost via a safe (sandboxed) expression evaluator.
+- **GUI**: a "🔍 Diagnose" button and color-coded Diagnosis dialog; Auto-Scan
+  faults now list likely causes; computed channels are added on load.
+- **MCP**: `lookup_dtc` and `diagnose_file` tools; `read_measuring_log` gains an
+  `include_computed` option.
+
+### Fixed
+- **Live DTC read/clear now work.** `get_dtcs()` queried mode 03 without
+  `force=True` (so python-OBD silently returned nothing), and the default
+  `obd.Async` connection served cached watch values rather than live reads.
+  Now defaults to a blocking connection, forces the DTC commands, reads pending
+  codes (mode 07) too, and de-duplicates.
+
 ## [0.2.0] - 2026-06-24
 
 ### Added
@@ -68,6 +94,7 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.3.0
 [0.2.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.2.0
 [0.1.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.1.0
