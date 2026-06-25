@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-06-25
+
+### Added
+- **Drive-cycle helper + smog readiness report**: the Vehicle Info dialog now
+  shows a **drive-cycle tip** next to each incomplete monitor, and a **Save Smog
+  Report…** button produces a one-page PDF/HTML emissions-readiness report
+  (READY / NOT-ready verdict, monitor table with tips, MIL, permanent DTCs) via
+  `vcds_core.report.build_smog_html`.
+
 ## [0.18.0] - 2026-06-25
 
 ### Added
@@ -289,7 +298,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.18.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.19.0
 [0.18.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.18.0
 [0.17.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.17.0
 [0.16.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.16.0

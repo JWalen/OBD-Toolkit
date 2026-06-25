@@ -2295,8 +2295,9 @@ if _HAVE_QT:
 
         def __init__(self, vin_str, info, cals, readiness, perm, parent=None):
             super().__init__(parent)
+            self._vin, self._info, self._readiness, self._perm = vin_str, info, readiness, perm
             self.setWindowTitle("Vehicle Info & Readiness")
-            self.resize(560, 580)
+            self.resize(580, 620)
             v = QtWidgets.QVBoxLayout(self)
             br = QtWidgets.QTextBrowser()
             h = ["<h3>Vehicle</h3>", f"<b>VIN:</b> {vin_str or 'n/a'}<br>"]
@@ -2312,9 +2313,11 @@ if _HAVE_QT:
                 mil = "<span style='color:#E53E3E'>ON ⚠</span>" if readiness["mil"] else "off"
                 h.append(f"<b>MIL (check-engine):</b> {mil} &nbsp;&nbsp; "
                          f"<b>Stored DTCs:</b> {readiness['dtc_count']}<br>")
+                from vcds_core import report as _report
                 h.append("<table cellpadding=3>")
                 incomplete = []
                 for name, st in readiness["monitors"].items():
+                    tip = ""
                     if not st["available"]:
                         status = "<span style='color:#718096'>n/a</span>"
                     elif st["complete"]:
@@ -2322,7 +2325,9 @@ if _HAVE_QT:
                     else:
                         status = "<span style='color:#E53E3E'>NOT ready</span>"
                         incomplete.append(name)
-                    h.append(f"<tr><td>{name.replace('_', ' ')}</td><td>{status}</td></tr>")
+                        tip = f"<span style='color:#718096'>{_report.drive_cycle_tip(name)}</span>"
+                    h.append(f"<tr><td>{name.replace('_', ' ')}</td><td>{status}</td>"
+                             f"<td>{tip}</td></tr>")
                 h.append("</table>")
                 ready = (not readiness["mil"]) and not incomplete
                 verdict = ("<span style='color:#38A169'>likely ready to pass</span>" if ready
@@ -2339,9 +2344,38 @@ if _HAVE_QT:
             br.setHtml("".join(h))
             v.addWidget(br, 1)
             buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Close)
+            self.btn_smog = buttons.addButton("Save Smog Report…",
+                                              QtWidgets.QDialogButtonBox.ActionRole)
+            self.btn_smog.clicked.connect(self._save_smog)
             buttons.rejected.connect(self.reject)
             buttons.accepted.connect(self.accept)
             v.addWidget(buttons)
+
+        def _save_smog(self):
+            from vcds_core import __version__ as _ver
+            from vcds_core import report as _report
+
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(
+                self, "Save Smog Report", DEFAULT_LOGS_DIR, "PDF document (*.pdf);;HTML page (*.html)")
+            if not path:
+                return
+            html = _report.build_smog_html(
+                self._vin, self._info, self._readiness, self._perm,
+                generated=time.strftime("%Y-%m-%d %H:%M"), version=_ver)
+            try:
+                if path.lower().endswith(".pdf"):
+                    doc = QtGui.QTextDocument()
+                    doc.setHtml(html)
+                    writer = QtGui.QPdfWriter(path)
+                    writer.setPageSize(QtGui.QPageSize(QtGui.QPageSize.A4))
+                    doc.print_(writer)
+                else:
+                    with open(path, "w", encoding="utf-8") as fh:
+                        fh.write(html)
+            except Exception as exc:  # noqa: BLE001
+                QtWidgets.QMessageBox.critical(self, "Save failed", str(exc))
+                return
+            QtWidgets.QMessageBox.information(self, "Report saved", f"Saved to\n{path}")
 
     class EnhancedPidsDialog(QtWidgets.QDialog):
         """View / read experimental manufacturer (mode 22) enhanced PIDs."""
