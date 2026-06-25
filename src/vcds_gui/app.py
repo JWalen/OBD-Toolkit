@@ -1729,78 +1729,216 @@ if _HAVE_QT:
     # --------------------------------------------------------------------- #
     # Live gauge dashboard
     # --------------------------------------------------------------------- #
-    class GaugeTile(QtWidgets.QFrame):
-        def __init__(self, name: str, unit: str, system: str = units.AS_LOGGED, parent=None):
+    def _auto_gauge(name: str, unit: str):
+        """Pick a sensible gauge kind + range from a channel's name/unit."""
+        n, u = name.lower(), unit.lower()
+        if "rpm" in u or "rpm" in n or "/min" in u or "engine speed" in n:
+            return "needle", 0.0, 8000.0
+        if "speed" in n:
+            return "needle", 0.0, 260.0
+        if "°c" in u or "°f" in u or "temp" in n:
+            return "bar", -40.0, 150.0
+        if u == "%" or "load" in n or "throttle" in n or "trim" in n or "pedal" in n:
+            return "bar", 0.0, 100.0
+        if ("kpa" in u or "mbar" in u or "bar" in u or "psi" in u
+                or "boost" in n or "map" in n or "pressure" in n):
+            return "bar", 0.0, 300.0
+        return "numeric", 0.0, 100.0
+
+    class Gauge(QtWidgets.QFrame):
+        """A single live gauge: needle dial, bar, or big numeric — customizable."""
+
+        changed = QtCore.Signal(str)  # channel name, when the user customizes it
+
+        def __init__(self, name, unit, kind, vmin, vmax, system=units.AS_LOGGED, parent=None):
             super().__init__(parent)
             self.name = name
             self.unit = unit
+            self.kind = kind
+            self.vmin = vmin
+            self.vmax = vmax
             self.system = system
+            self.value = None
             self.warn = None
             self.crit = None
-            self.setMinimumSize(160, 96)
-            self._base = "GaugeTile { border-radius: 8px; border: 1px solid #888; }"
-            self.setStyleSheet(self._base)
-            v = QtWidgets.QVBoxLayout(self)
-            self.l_name = QtWidgets.QLabel(name)
-            self.l_name.setStyleSheet("font-size: 11px; color: #888;")
-            self.l_val = QtWidgets.QLabel("—")
-            f = self.l_val.font()
-            f.setPointSize(24)
-            f.setBold(True)
-            self.l_val.setFont(f)
-            self.l_unit = QtWidgets.QLabel(unit)
-            self.l_unit.setStyleSheet("font-size: 10px; color: #888;")
-            for w in (self.l_name, self.l_val, self.l_unit):
-                v.addWidget(w)
+            self.setMinimumSize(190, 150)
+            self.setFrameShape(QtWidgets.QFrame.StyledPanel)
+            self.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+            self.customContextMenuRequested.connect(self._menu)
 
         def set_value(self, value):
-            if value is None:
-                self.l_val.setText("—")
+            self.value = value
+            self.update()
+
+        def _color(self):
+            if self.value is None:
+                return QtGui.QColor("#0066CC")
+            if self.crit is not None and self.value >= self.crit:
+                return QtGui.QColor("#E53E3E")
+            if self.warn is not None and self.value >= self.warn:
+                return QtGui.QColor("#DD6B20")
+            return QtGui.QColor("#0066CC")
+
+        def _frac(self):
+            if self.value is None or self.vmax == self.vmin:
+                return None
+            return max(0.0, min(1.0, (self.value - self.vmin) / (self.vmax - self.vmin)))
+
+        # -- customization -------------------------------------------------- #
+        def _menu(self, pos):
+            m = QtWidgets.QMenu(self)
+            for label, kind in (("Needle", "needle"), ("Bar", "bar"), ("Numeric", "numeric")):
+                act = m.addAction(label)
+                act.setCheckable(True)
+                act.setChecked(self.kind == kind)
+                act.triggered.connect(lambda _c, k=kind: self._set_kind(k))
+            m.addSeparator()
+            m.addAction("Set range…").triggered.connect(self._set_range)
+            m.exec(self.mapToGlobal(pos))
+
+        def _set_kind(self, kind):
+            self.kind = kind
+            self.update()
+            self.changed.emit(self.name)
+
+        def _set_range(self):
+            lo, ok = QtWidgets.QInputDialog.getDouble(self, "Range", "Minimum:", self.vmin, -1e6, 1e6, 1)
+            if not ok:
                 return
-            disp, dunit = units.convert(value, self.unit, self.system)
-            self.l_val.setText(f"{disp:g}")
-            self.l_unit.setText(dunit)
-            # thresholds are expressed in logged units -> compare the raw value
-            color = None
-            if self.crit is not None and value >= self.crit:
-                color = "#E53E3E"
-            elif self.warn is not None and value >= self.warn:
-                color = "#DD6B20"
-            if color:
-                self.setStyleSheet(
-                    f"GaugeTile {{ border-radius: 8px; border: 2px solid {color}; "
-                    f"background: {color}33; }}"
-                )
-            else:
-                self.setStyleSheet(self._base)
+            hi, ok = QtWidgets.QInputDialog.getDouble(self, "Range", "Maximum:", self.vmax, -1e6, 1e6, 1)
+            if not ok or hi <= lo:
+                return
+            self.vmin, self.vmax = lo, hi
+            self.update()
+            self.changed.emit(self.name)
+
+        # -- painting ------------------------------------------------------- #
+        def paintEvent(self, _ev):
+            import math
+
+            p = QtGui.QPainter(self)
+            p.setRenderHint(QtGui.QPainter.Antialiasing)
+            fg = self.palette().color(QtGui.QPalette.WindowText)
+            muted = QtGui.QColor("#8a93a6")
+            r = self.rect().adjusted(8, 8, -8, -8)
+
+            p.setPen(muted)
+            font = p.font()
+            font.setPointSize(9)
+            p.setFont(font)
+            p.drawText(QtCore.QRectF(r.left(), r.top(), r.width(), 16),
+                       QtCore.Qt.AlignLeft, self.name)
+
+            disp, dunit = (None, self.unit)
+            if self.value is not None:
+                disp, dunit = units.convert(self.value, self.unit, self.system)
+            vtxt = "—" if disp is None else f"{disp:g} {dunit}".strip()
+
+            if self.kind == "needle":
+                cx = r.center().x()
+                cy = r.center().y() + r.height() * 0.12
+                rad = min(r.width(), r.height()) * 0.40
+                arc = QtCore.QRectF(cx - rad, cy - rad, 2 * rad, 2 * rad)
+                p.setPen(QtGui.QPen(muted, 3))
+                p.drawArc(arc, 225 * 16, -270 * 16)
+                fr = self._frac()
+                if fr is not None:
+                    ang = math.radians(225 - 270 * fr)
+                    nx = cx + rad * 0.82 * math.cos(ang)
+                    ny = cy - rad * 0.82 * math.sin(ang)
+                    p.setPen(QtGui.QPen(self._color(), 3))
+                    p.drawLine(QtCore.QPointF(cx, cy), QtCore.QPointF(nx, ny))
+                p.setPen(fg)
+                font.setPointSize(13)
+                font.setBold(True)
+                p.setFont(font)
+                p.drawText(QtCore.QRectF(r.left(), cy + rad * 0.5, r.width(), 24),
+                           QtCore.Qt.AlignHCenter, vtxt)
+            elif self.kind == "bar":
+                bar = QtCore.QRectF(r.left(), r.center().y() - 14, r.width(), 28)
+                p.setPen(QtGui.QPen(muted, 1))
+                p.setBrush(QtCore.Qt.NoBrush)
+                p.drawRoundedRect(bar, 5, 5)
+                fr = self._frac()
+                if fr is not None:
+                    fill = QtCore.QRectF(bar.left() + 1, bar.top() + 1,
+                                         (bar.width() - 2) * fr, bar.height() - 2)
+                    p.setBrush(self._color())
+                    p.setPen(QtCore.Qt.NoPen)
+                    p.drawRoundedRect(fill, 4, 4)
+                p.setPen(fg)
+                font.setPointSize(13)
+                font.setBold(True)
+                p.setFont(font)
+                p.drawText(bar, QtCore.Qt.AlignCenter, vtxt)
+            else:  # numeric
+                p.setPen(self._color() if (self.crit or self.warn) else fg)
+                font.setPointSize(22)
+                font.setBold(True)
+                p.setFont(font)
+                p.drawText(r, QtCore.Qt.AlignCenter, vtxt)
+            p.end()
 
     class GaugeWindow(QtWidgets.QWidget):
         def __init__(self, channels, system=units.AS_LOGGED, parent=None):
             super().__init__(parent)
             self.setWindowTitle("Live Gauges")
             self.setWindowFlag(QtCore.Qt.Window)
-            self.resize(680, 380)
-            grid = QtWidgets.QGridLayout(self)
-            self.tiles = {}
+            self.resize(720, 420)
+            self.settings = QtCore.QSettings("DeltaModTech", "VCDS Toolkit")
+            outer = QtWidgets.QVBoxLayout(self)
+            outer.addWidget(QtWidgets.QLabel(
+                "<span style='color:#718096'>Right-click a gauge to change its type "
+                "(needle / bar / numeric) or range.</span>"))
+            scroll = QtWidgets.QScrollArea()
+            scroll.setWidgetResizable(True)
+            inner = QtWidgets.QWidget()
+            grid = QtWidgets.QGridLayout(inner)
+            scroll.setWidget(inner)
+            outer.addWidget(scroll, 1)
+
+            self.gauges = {}
             cols = 4
             for i, ch in enumerate(channels):
-                tile = GaugeTile(ch.name, ch.unit, system)
-                self.tiles[ch.name] = tile
-                grid.addWidget(tile, i // cols, i % cols)
+                kind, lo, hi = self._config_for(ch)
+                g = Gauge(ch.name, ch.unit, kind, lo, hi, system)
+                g.changed.connect(self._save_config)
+                self.gauges[ch.name] = g
+                grid.addWidget(g, i // cols, i % cols)
+
+        def _config_for(self, ch):
+            kind, lo, hi = _auto_gauge(ch.name, ch.unit)
+            raw = self.settings.value(f"gauge/{ch.name}", "", type=str)
+            if raw:
+                try:
+                    import json
+                    d = json.loads(raw)
+                    return d.get("kind", kind), float(d.get("min", lo)), float(d.get("max", hi))
+                except Exception:  # noqa: BLE001
+                    pass
+            return kind, lo, hi
+
+        def _save_config(self, name):
+            import json
+            g = self.gauges.get(name)
+            if g is None:
+                return
+            self.settings.setValue(
+                f"gauge/{name}", json.dumps({"kind": g.kind, "min": g.vmin, "max": g.vmax}))
 
         def set_thresholds(self, rules):
-            for name, tile in self.tiles.items():
-                tile.warn = None
-                tile.crit = None
+            for name, g in self.gauges.items():
+                g.warn = None
+                g.crit = None
                 for r in rules:
                     chan = str(r.get("channel", "")).lower()
                     if chan and chan in name.lower() and r.get("op") in (">", ">="):
-                        tile.crit = float(r.get("value"))
+                        g.crit = float(r.get("value"))
 
         def update_values(self, values):
-            for name, tile in self.tiles.items():
+            for name, g in self.gauges.items():
                 if name in values:
-                    tile.set_value(values[name])
+                    g.set_value(values[name])
 
     # --------------------------------------------------------------------- #
     # Tab 3 — AI Assistant

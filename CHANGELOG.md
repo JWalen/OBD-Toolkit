@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-06-25
+
+### Changed
+- **Live gauge dashboard redesigned**: now **scrollable**, with **needle dials**
+  for RPM/speed, **bar gauges** for temperatures/load/pressure, and numeric
+  tiles — auto-selected per channel. **Right-click any gauge** to change its
+  type (needle / bar / numeric) or its range; your choices are remembered.
+  Gauges still colour amber/red on threshold-trigger rules and honor the units
+  selector.
+
 ## [0.14.1] - 2026-06-25
 
 ### Added
@@ -250,7 +260,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.14.1...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.15.0
 [0.14.1]: https://github.com/JWalen/VAGScanner/releases/tag/v0.14.1
 [0.14.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.14.0
 [0.13.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.13.0

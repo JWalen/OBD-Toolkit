@@ -211,17 +211,32 @@ def test_live_pid_presets(qapp, tmp_path):
     win.close()
 
 
+def test_auto_gauge_types():
+    assert gui_app._auto_gauge("Engine RPM", "rpm")[0] == "needle"
+    assert gui_app._auto_gauge("Vehicle Speed", "km/h")[0] == "needle"
+    assert gui_app._auto_gauge("Coolant Temp", "°C")[0] == "bar"
+    assert gui_app._auto_gauge("Engine Load", "%")[0] == "bar"
+    assert gui_app._auto_gauge("Intake MAP", "kPa")[0] == "bar"
+    assert gui_app._auto_gauge("Some Counter", "count")[0] == "numeric"
+
+
 def test_live_gauges_window(qapp):
-    win = gui_app.MainWindow()
-    tab = win.live_tab
     from vcds_obd.live import LiveChannel
-    chans = [LiveChannel("Intake MAP", "kPa", "INTAKE_PRESSURE"),
+
+    win = gui_app.MainWindow()
+    chans = [LiveChannel("Engine RPM", "rpm", "RPM"),
+             LiveChannel("Intake MAP", "kPa", "INTAKE_PRESSURE"),
              LiveChannel("Coolant Temp", "°C", "COOLANT_TEMP")]
     gw = gui_app.GaugeWindow(chans)
     gw.set_thresholds([{"channel": "MAP", "op": ">", "value": 180}])
-    gw.update_values({"Intake MAP": 200, "Coolant Temp": 90})
-    assert gw.tiles["Intake MAP"].l_val.text() == "200"
-    assert gw.tiles["Intake MAP"].crit == 180
+    gw.update_values({"Engine RPM": 3000, "Intake MAP": 200, "Coolant Temp": 90})
+    gw.show()
+    qapp.processEvents()  # force a paint pass (catches paintEvent crashes)
+    assert gw.gauges["Intake MAP"].value == 200
+    assert gw.gauges["Intake MAP"].crit == 180
+    assert gw.gauges["Engine RPM"].kind == "needle"
+    assert gw.gauges["Intake MAP"].kind == "bar"
+    gw.close()
     win.close()
 
 
