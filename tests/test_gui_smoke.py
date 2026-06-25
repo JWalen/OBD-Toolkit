@@ -85,6 +85,26 @@ def test_quick_tour_navigation(qapp, tmp_path):
     assert settings.value("ui/show_tour", True, type=bool) is False
 
 
+def test_update_banner_shows_on_found(qapp):
+    from vcds_gui.updater import UpdateInfo
+
+    win = gui_app.MainWindow()
+    assert win.update_banner.isHidden()  # nothing yet
+    info = UpdateInfo(
+        version="9.9.9", tag="v9.9.9", name="v9.9.9", notes="notes",
+        html_url="https://github.com/JWalen/VAGScanner/releases/tag/v9.9.9",
+        installer_url="https://example.test/setup.exe", installer_name="setup.exe",
+        installer_size=10, sha256=None,
+    )
+    win._on_update_found(info)
+    assert not win.update_banner.isHidden()
+    assert "9.9.9" in win.update_banner.label.text()
+    # a "no update" result with a background (non-manual) check is silent
+    win._update_manual = False
+    win._on_update_none()
+    win.close()
+
+
 def test_analyzer_loads_autoscan(qapp, samples_dir):
     win = gui_app.MainWindow()
     tab = win.analyzer

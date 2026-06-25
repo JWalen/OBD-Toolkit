@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - In-app help: a **Help** menu with a scrollable **User Guide** (F1) and an
   **About** box, plus a **Quick Tour** shown on first start-up (with a "show at
   startup" toggle, re-openable from Help → Quick Tour).
+- In-app updates: the GUI checks the GitHub Releases API on startup (and via
+  Help → Check for Updates…), shows an update banner, and can download the
+  release installer (verifying its SHA-256), run it and relaunch. Startup
+  checking is toggleable.
 
 ## [0.1.0] - 2026-06-24
 

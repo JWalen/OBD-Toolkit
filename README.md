@@ -231,6 +231,16 @@ git push origin v0.2.0
 The tag must match the `pyproject.toml` version (the workflow fails fast if they
 disagree). You can also trigger it manually from the **Actions → Release** tab.
 
+### In-app updates
+
+The GUI checks GitHub Releases on startup (and via **Help → Check for
+Updates…**). When a newer version is published it shows an update banner;
+**Download &amp; Install** fetches the release's `Setup.exe`, verifies its
+SHA-256 (when GitHub provides an asset digest), then runs the installer — which
+upgrades in place — and closes the app. Startup checking can be toggled from
+**Help → Check for Updates at Startup**. The check is a single unauthenticated
+call to the public GitHub Releases API.
+
 ## Project layout
 
 ```

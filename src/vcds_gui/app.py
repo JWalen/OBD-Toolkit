@@ -26,6 +26,7 @@ import threading
 from typing import Dict, List, Optional, Tuple
 
 from vcds_core import parse
+from vcds_gui import updater
 from vcds_obd import live
 
 try:
@@ -960,6 +961,89 @@ if _HAVE_QT:
             super().reject()
 
     # --------------------------------------------------------------------- #
+    # Auto-update (checks GitHub Releases on a background thread)
+    # --------------------------------------------------------------------- #
+    class UpdateCheckWorker(QtCore.QObject):
+        found = QtCore.Signal(object)
+        none = QtCore.Signal()
+        failed = QtCore.Signal(str)
+
+        def __init__(self, current_version: str):
+            super().__init__()
+            self.current_version = current_version
+
+        @QtCore.Slot()
+        def run(self):
+            try:
+                info = updater.check_for_update(self.current_version)
+            except Exception as exc:  # noqa: BLE001
+                self.failed.emit(str(exc))
+                return
+            if info:
+                self.found.emit(info)
+            else:
+                self.none.emit()
+
+    class UpdateDownloadWorker(QtCore.QObject):
+        progress = QtCore.Signal(int, int)
+        done = QtCore.Signal(str)
+        failed = QtCore.Signal(str)
+
+        def __init__(self, info, dest_dir: str):
+            super().__init__()
+            self.info = info
+            self.dest_dir = dest_dir
+            self._cancel = False
+
+        def cancel(self):
+            self._cancel = True
+
+        @QtCore.Slot()
+        def run(self):
+            try:
+                path = updater.download_installer(
+                    self.info,
+                    self.dest_dir,
+                    progress=lambda d, t: self.progress.emit(d, t),
+                    is_cancelled=lambda: self._cancel,
+                )
+                self.done.emit(path)
+            except Exception as exc:  # noqa: BLE001
+                self.failed.emit(str(exc))
+
+    class UpdateBanner(QtWidgets.QFrame):
+        install = QtCore.Signal()
+        notes = QtCore.Signal()
+        dismiss = QtCore.Signal()
+
+        def __init__(self, parent=None):
+            super().__init__(parent)
+            self.setStyleSheet(
+                "UpdateBanner { background: #0066CC; }"
+                " QLabel { color: white; }"
+                " QPushButton { padding: 3px 12px; }"
+            )
+            h = QtWidgets.QHBoxLayout(self)
+            h.setContentsMargins(12, 7, 12, 7)
+            self.label = QtWidgets.QLabel()
+            font = self.label.font()
+            font.setBold(True)
+            self.label.setFont(font)
+            h.addWidget(self.label, 1)
+            b_notes = QtWidgets.QPushButton("Release Notes")
+            b_install = QtWidgets.QPushButton("Download && Install")
+            b_dismiss = QtWidgets.QPushButton("Dismiss")
+            for b in (b_notes, b_install, b_dismiss):
+                h.addWidget(b)
+            b_notes.clicked.connect(self.notes)
+            b_install.clicked.connect(self.install)
+            b_dismiss.clicked.connect(self.dismiss)
+
+        def show_update(self, text: str):
+            self.label.setText(text)
+            self.show()
+
+    # --------------------------------------------------------------------- #
     # Main window
     # --------------------------------------------------------------------- #
     class MainWindow(QtWidgets.QMainWindow):
@@ -973,8 +1057,22 @@ if _HAVE_QT:
             if icon:
                 self.setWindowIcon(QtGui.QIcon(icon))
             self.resize(1280, 800)
+            self._update_info = None
+
+            central = QtWidgets.QWidget()
+            cv = QtWidgets.QVBoxLayout(central)
+            cv.setContentsMargins(0, 0, 0, 0)
+            cv.setSpacing(0)
+            self.update_banner = UpdateBanner()
+            self.update_banner.hide()
+            self.update_banner.install.connect(self._install_update)
+            self.update_banner.notes.connect(self._open_release_notes)
+            self.update_banner.dismiss.connect(self.update_banner.hide)
+            cv.addWidget(self.update_banner)
             self.tabs = QtWidgets.QTabWidget()
-            self.setCentralWidget(self.tabs)
+            cv.addWidget(self.tabs, 1)
+            self.setCentralWidget(central)
+
             self.analyzer = FileAnalyzerTab()
             self.live_tab = LiveTab(self)
             self.tabs.addTab(self.analyzer, "File Analyzer")
@@ -985,8 +1083,10 @@ if _HAVE_QT:
             self.statusBar().showMessage(
                 f"Logs dir: {DEFAULT_LOGS_DIR}   ·   Press F1 for help"
             )
-            # Offer the quick tour on first run (after the window is shown).
+            # Offer the quick tour on first run, then check for updates — both
+            # after the window is shown, and both skipped in headless runs.
             QtCore.QTimer.singleShot(400, self._maybe_first_run_tour)
+            QtCore.QTimer.singleShot(1500, self._maybe_startup_update_check)
 
         def _build_menu(self):
             help_menu = self.menuBar().addMenu("&Help")
@@ -998,6 +1098,21 @@ if _HAVE_QT:
             guide.triggered.connect(self.show_help)
             help_menu.addAction(guide)
             help_menu.addSeparator()
+
+            upd = QtGui.QAction("Check for &Updates…", self)
+            upd.triggered.connect(lambda: self.check_for_updates(manual=True))
+            help_menu.addAction(upd)
+            self.act_update_startup = QtGui.QAction("Check for Updates at Startup", self)
+            self.act_update_startup.setCheckable(True)
+            self.act_update_startup.setChecked(
+                self.settings.value("ui/check_updates", True, type=bool)
+            )
+            self.act_update_startup.toggled.connect(
+                lambda v: self.settings.setValue("ui/check_updates", v)
+            )
+            help_menu.addAction(self.act_update_startup)
+            help_menu.addSeparator()
+
             about = QtGui.QAction("&About", self)
             about.triggered.connect(self.show_about)
             help_menu.addAction(about)
@@ -1028,6 +1143,120 @@ if _HAVE_QT:
                 '<a href="https://github.com/JWalen/VAGScanner">'
                 "github.com/JWalen/VAGScanner</a>",
             )
+
+        # -- updates -------------------------------------------------------- #
+        def _maybe_startup_update_check(self):
+            if os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+                return
+            if self.settings.value("ui/check_updates", True, type=bool):
+                self.check_for_updates(manual=False)
+
+        def check_for_updates(self, manual: bool = False):
+            self._update_manual = manual
+            self._chk_thread = QtCore.QThread()
+            self._chk_worker = UpdateCheckWorker(self._version)
+            self._chk_worker.moveToThread(self._chk_thread)
+            self._chk_thread.started.connect(self._chk_worker.run)
+            self._chk_worker.found.connect(self._on_update_found)
+            self._chk_worker.none.connect(self._on_update_none)
+            self._chk_worker.failed.connect(self._on_update_failed)
+            for sig in (self._chk_worker.found, self._chk_worker.none, self._chk_worker.failed):
+                sig.connect(self._chk_thread.quit)
+            self._chk_thread.start()
+
+        @QtCore.Slot(object)
+        def _on_update_found(self, info):
+            self._update_info = info
+            self.update_banner.show_update(
+                f"Update available — {info.name} (you have v{self._version})."
+            )
+
+        @QtCore.Slot()
+        def _on_update_none(self):
+            if getattr(self, "_update_manual", False):
+                QtWidgets.QMessageBox.information(
+                    self, "Up to date", f"You're running the latest version (v{self._version})."
+                )
+
+        @QtCore.Slot(str)
+        def _on_update_failed(self, msg):
+            if getattr(self, "_update_manual", False):
+                QtWidgets.QMessageBox.warning(
+                    self, "Update check failed", f"Could not check for updates:\n{msg}"
+                )
+
+        def _open_release_notes(self):
+            if self._update_info and self._update_info.html_url:
+                QtGui.QDesktopServices.openUrl(QtCore.QUrl(self._update_info.html_url))
+
+        def _install_update(self):
+            info = self._update_info
+            if not info:
+                return
+            if not info.installer_url:
+                QtWidgets.QMessageBox.information(
+                    self, "Update",
+                    "This release has no installer asset. Opening the releases page.",
+                )
+                self._open_release_notes()
+                return
+            import tempfile
+
+            dest = os.path.join(tempfile.gettempdir(), "vcds_toolkit_update")
+            self._dl_dialog = QtWidgets.QProgressDialog(
+                "Downloading update…", "Cancel", 0, 100, self
+            )
+            self._dl_dialog.setWindowTitle("Updating")
+            self._dl_dialog.setWindowModality(QtCore.Qt.WindowModal)
+            self._dl_dialog.setMinimumDuration(0)
+            self._dl_dialog.setAutoClose(False)
+            self._dl_dialog.setAutoReset(False)
+
+            self._dl_thread = QtCore.QThread()
+            self._dl_worker = UpdateDownloadWorker(info, dest)
+            self._dl_worker.moveToThread(self._dl_thread)
+            self._dl_thread.started.connect(self._dl_worker.run)
+            self._dl_worker.progress.connect(self._on_dl_progress)
+            self._dl_worker.done.connect(self._on_dl_done)
+            self._dl_worker.failed.connect(self._on_dl_failed)
+            self._dl_worker.done.connect(self._dl_thread.quit)
+            self._dl_worker.failed.connect(self._dl_thread.quit)
+            self._dl_dialog.canceled.connect(self._dl_worker.cancel)
+            self._dl_thread.start()
+
+        @QtCore.Slot(int, int)
+        def _on_dl_progress(self, done, total):
+            if total > 0:
+                self._dl_dialog.setValue(int(done * 100 / total))
+            else:
+                self._dl_dialog.setLabelText(f"Downloading update… {done // 1024} KB")
+
+        @QtCore.Slot(str)
+        def _on_dl_done(self, path):
+            self._dl_dialog.close()
+            ok = QtWidgets.QMessageBox.question(
+                self,
+                "Install update",
+                "The update has downloaded. VCDS Toolkit will close and the "
+                "installer will run.\n\nInstall now?",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                QtWidgets.QMessageBox.Yes,
+            )
+            if ok != QtWidgets.QMessageBox.Yes:
+                return
+            try:
+                updater.launch_installer(path)
+            except Exception as exc:  # noqa: BLE001
+                QtWidgets.QMessageBox.critical(self, "Launch failed", str(exc))
+                return
+            QtWidgets.QApplication.quit()
+
+        @QtCore.Slot(str)
+        def _on_dl_failed(self, msg):
+            self._dl_dialog.close()
+            if "cancel" in msg.lower():
+                return
+            QtWidgets.QMessageBox.warning(self, "Download failed", msg)
 
         def open_in_analyzer(self, path: str):
             self.analyzer.load_csv(path)
