@@ -319,6 +319,18 @@ def test_garage_dialog_builds(qapp, tmp_path, monkeypatch):
     win.close()
 
 
+def test_onboard_tests_dialog_builds(qapp):
+    tests = [{"command": "MONITOR_CATALYST_B1", "name": "Catalyst", "value": 0.8,
+              "min": 0.0, "max": 1.0, "passed": False}]
+    dlg = gui_app.OnboardTestsDialog(tests)
+    table = dlg.findChild(QtWidgets.QTableWidget)
+    assert table is not None and table.rowCount() == 1
+    assert table.item(0, 5).text() == "FAIL"
+    # empty case
+    dlg2 = gui_app.OnboardTestsDialog([])
+    assert dlg2.findChild(QtWidgets.QTableWidget) is None
+
+
 def test_vehicle_info_dialog_builds(qapp):
     from vcds_core.vin import decode_vin
 

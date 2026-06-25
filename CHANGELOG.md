@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-06-25
+
+### Added
+- **Mode 06 on-board test results** (Live tab → "Mode 06"): reads the ECU's
+  on-board monitoring tests (catalyst, O2 sensors, EVAP…) with value / min / max
+  and a pass-fail result, and an MCP `onboard_tests` tool.
+
 ## [0.19.0] - 2026-06-25
 
 ### Added
@@ -298,7 +305,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.20.0
 [0.19.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.19.0
 [0.18.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.18.0
 [0.17.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.17.0

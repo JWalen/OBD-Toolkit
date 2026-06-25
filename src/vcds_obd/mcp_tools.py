@@ -141,6 +141,18 @@ def readiness_impl(logs_dir: str, port: Optional[str] = None) -> dict:
         _close(conn)
 
 
+def onboard_tests_impl(logs_dir: str, port: Optional[str] = None) -> dict:
+    try:
+        conn = live.connect(port=port)
+    except Exception as exc:  # noqa: BLE001
+        return {"connected": False, "error": f"No ELM327 adapter: {exc}"}
+    try:
+        tests = conn.read_monitor_tests() if hasattr(conn, "read_monitor_tests") else []
+        return {"connected": True, "count": len(tests), "tests": tests}
+    finally:
+        _close(conn)
+
+
 def run_obd_session_impl(
     logs_dir: str,
     duration_s: float,
@@ -237,6 +249,18 @@ def register_obd_tools(mcp, logs_dir_fn) -> None:
             permanent (mode 0A) DTCs.
         """
         return readiness_impl(logs_dir_fn(), port=port)
+
+    @mcp.tool()
+    def onboard_tests(port: Optional[str] = None) -> dict:
+        """Read on-board monitoring test results (mode 06: catalyst, O2, EVAP…).
+
+        Args:
+            port: Serial port to use. Auto-scans when omitted.
+
+        Returns:
+            A list of test results with value / min / max and a pass flag.
+        """
+        return onboard_tests_impl(logs_dir_fn(), port=port)
 
     @mcp.tool()
     def read_live_dtcs(port: Optional[str] = None) -> dict:

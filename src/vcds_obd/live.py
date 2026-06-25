@@ -726,6 +726,45 @@ class PyOBDConnection:
             out.append((RawELM327Connection._decode_dtc(b1, b2), ""))
         return out
 
+    def read_monitor_tests(self) -> List[dict]:
+        """On-board monitoring test results (mode 06) via python-OBD MONITOR_* cmds."""
+        out: List[dict] = []
+        try:
+            supported = list(self._conn.supported_commands)
+        except Exception:  # noqa: BLE001
+            return out
+        for cmd in supported:
+            name = getattr(cmd, "name", "") or ""
+            if not name.startswith("MONITOR"):
+                continue
+            resp = self._one_shot(cmd)
+            if resp is None or resp.is_null() or resp.value is None:
+                continue
+            mon = resp.value
+            items = []
+            tests = getattr(mon, "tests", None)
+            if isinstance(tests, dict):
+                items = list(tests.values())
+            elif isinstance(tests, (list, tuple)):
+                items = list(tests)
+            else:
+                for attr in dir(mon):
+                    if attr.startswith("_"):
+                        continue
+                    val = getattr(mon, attr, None)
+                    if hasattr(val, "value") and hasattr(val, "min") and hasattr(val, "max"):
+                        items.append(val)
+            for t in items:
+                out.append({
+                    "command": name,
+                    "name": str(getattr(t, "name", "") or name),
+                    "value": _strip(getattr(t, "value", None)),
+                    "min": _strip(getattr(t, "min", None)),
+                    "max": _strip(getattr(t, "max", None)),
+                    "passed": bool(getattr(t, "passed", True)),
+                })
+        return out
+
     def status(self) -> str:
         try:
             return str(self._conn.status())

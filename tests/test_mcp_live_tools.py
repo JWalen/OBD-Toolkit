@@ -125,6 +125,18 @@ def test_readiness_impl(monkeypatch, tmp_path):
     assert out["ready_for_emissions"] is False  # an incomplete monitor
 
 
+def test_onboard_tests_impl(monkeypatch, tmp_path):
+    class Conn(FakeOBD):
+        def read_monitor_tests(self):
+            return [{"command": "MONITOR_O2_B1S1", "name": "Rich-to-lean", "value": 0.7,
+                     "min": 0.5, "max": 1.0, "passed": True}]
+
+    monkeypatch.setattr(live, "connect", lambda **k: Conn())
+    out = mcp_tools.onboard_tests_impl(str(tmp_path))
+    assert out["connected"] and out["count"] == 1
+    assert out["tests"][0]["passed"] is True
+
+
 def test_run_obd_session_roundtrips(monkeypatch, tmp_path):
     monkeypatch.setattr(live, "connect", lambda **k: FakeOBD())
     # Make the session instant and deterministic.

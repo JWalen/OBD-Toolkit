@@ -758,9 +758,12 @@ if _HAVE_QT:
             self.btn_clear_dtc = QtWidgets.QPushButton("Clear DTCs…")
             self.btn_vehinfo = QtWidgets.QPushButton("ⓘ Vehicle Info")
             self.btn_vehinfo.setToolTip("VIN, calibration IDs, emissions readiness, permanent DTCs")
+            self.btn_mode06 = QtWidgets.QPushButton("Mode 06")
+            self.btn_mode06.setToolTip("On-board monitoring test results (catalyst, O2, EVAP…)")
             dbar.addWidget(self.btn_read_dtc)
             dbar.addWidget(self.btn_clear_dtc)
             dbar.addWidget(self.btn_vehinfo)
+            dbar.addWidget(self.btn_mode06)
             dv.addLayout(dbar)
             left_split.addWidget(dtc_box)
 
@@ -814,6 +817,7 @@ if _HAVE_QT:
             self.btn_read_dtc.clicked.connect(self.read_dtcs)
             self.btn_clear_dtc.clicked.connect(self.clear_dtcs)
             self.btn_vehinfo.clicked.connect(self.show_vehicle_info)
+            self.btn_mode06.clicked.connect(self.show_onboard_tests)
             self.btn_start.clicked.connect(self.start_logging)
             self.btn_stop.clicked.connect(self.stop_logging)
             self.btn_gauges.clicked.connect(self.open_gauges)
@@ -956,8 +960,15 @@ if _HAVE_QT:
         def _set_connected(self, on: bool):
             self.btn_connect.setEnabled(not on)
             self.btn_disconnect.setEnabled(on)
-            for w in (self.btn_start, self.btn_read_dtc, self.btn_clear_dtc, self.btn_vehinfo):
+            for w in (self.btn_start, self.btn_read_dtc, self.btn_clear_dtc,
+                      self.btn_vehinfo, self.btn_mode06):
                 w.setEnabled(on)
+
+        def show_onboard_tests(self):
+            if self.conn is None:
+                return
+            tests = self.conn.read_monitor_tests() if hasattr(self.conn, "read_monitor_tests") else []
+            OnboardTestsDialog(tests, self).exec()
 
         def show_vehicle_info(self):
             if self.conn is None:
@@ -2199,6 +2210,38 @@ if _HAVE_QT:
             )
             self.btn_send.setEnabled(True)
 
+    class OnboardTestsDialog(QtWidgets.QDialog):
+        """Mode-06 on-board monitoring test results."""
+
+        def __init__(self, tests, parent=None):
+            super().__init__(parent)
+            self.setWindowTitle("On-board Tests (Mode 06)")
+            self.resize(720, 460)
+            v = QtWidgets.QVBoxLayout(self)
+            if not tests:
+                v.addWidget(QtWidgets.QLabel(
+                    "No mode-06 results available (the ECU reported none, or the adapter "
+                    "doesn't expose them)."))
+            else:
+                cols = ["Monitor", "Test", "Value", "Min", "Max", "Result"]
+                table = QtWidgets.QTableWidget(len(tests), len(cols))
+                table.setHorizontalHeaderLabels(cols)
+                table.setEditTriggers(QtWidgets.QTableWidget.NoEditTriggers)
+                for r, t in enumerate(tests):
+                    vals = [t.get("command", ""), t.get("name", ""),
+                            _fmt_num(t.get("value")), _fmt_num(t.get("min")), _fmt_num(t.get("max"))]
+                    for c, val in enumerate(vals):
+                        table.setItem(r, c, QtWidgets.QTableWidgetItem(str(val)))
+                    res = QtWidgets.QTableWidgetItem("PASS" if t.get("passed", True) else "FAIL")
+                    res.setForeground(QtGui.QColor("#38A169" if t.get("passed", True) else "#E53E3E"))
+                    table.setItem(r, 5, res)
+                table.resizeColumnsToContents()
+                v.addWidget(table, 1)
+            buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Close)
+            buttons.rejected.connect(self.reject)
+            buttons.accepted.connect(self.accept)
+            v.addWidget(buttons)
+
     class GarageDialog(QtWidgets.QDialog):
         """Manage saved vehicles (per VIN) and pick the active one."""
 
@@ -2773,6 +2816,12 @@ if _HAVE_QT:
         def open_in_analyzer(self, path: str):
             self.analyzer.load_csv(path)
             self.tabs.setCurrentWidget(self.analyzer)
+
+
+def _fmt_num(x):
+    if x is None:
+        return "—"
+    return f"{x:g}" if isinstance(x, float) else str(x)
 
 
 def _safe_session_name(name: str):
