@@ -2210,6 +2210,65 @@ if _HAVE_QT:
             )
             self.btn_send.setEnabled(True)
 
+    class ResetsDialog(QtWidgets.QDialog):
+        """Safe, standardized OBD-II write actions (and an honest note on the rest)."""
+
+        def __init__(self, main_window, parent=None):
+            super().__init__(parent)
+            self.main = main_window
+            self.setWindowTitle("Resets & Service")
+            self.resize(580, 400)
+            v = QtWidgets.QVBoxLayout(self)
+            head = QtWidgets.QLabel("<b>Safe standardized actions</b> (standard OBD-II only):")
+            v.addWidget(head)
+
+            self.btn_clear = QtWidgets.QPushButton("Clear DTCs & reset readiness monitors…")
+            self.btn_clear.clicked.connect(self._clear)
+            v.addWidget(self.btn_clear)
+            note = QtWidgets.QLabel(
+                "<span style='color:#718096'>Mode 04: erases stored trouble codes and "
+                "freeze-frame data and resets the I/M readiness monitors. The car must then "
+                "complete a drive cycle before it's emissions-ready again.</span>")
+            note.setWordWrap(True)
+            v.addWidget(note)
+
+            honest = QtWidgets.QLabel(
+                "<hr><b>Oil/service reset, coding &amp; adaptations, ECU tuning</b><br>"
+                "<span style='color:#718096'>These are <b>not</b> standard OBD-II functions. "
+                "They're manufacturer-specific (VCDS / OBDeleven on VAG, FORScan on Ford) and "
+                "usually require security access a generic ELM327 doesn't have — so this app "
+                "intentionally doesn't perform them, to avoid bricking a module. Engine "
+                "tuning/flashing also isn't possible over a generic ELM327; it needs a proper "
+                "flashing tool and a real calibration file.</span>")
+            honest.setWordWrap(True)
+            v.addWidget(honest)
+            v.addStretch(1)
+
+            buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Close)
+            buttons.rejected.connect(self.reject)
+            buttons.accepted.connect(self.accept)
+            v.addWidget(buttons)
+
+        def _clear(self):
+            conn = getattr(self.main.live_tab, "conn", None)
+            if conn is None:
+                QtWidgets.QMessageBox.information(self, "Resets", "Connect to an adapter first.")
+                return
+            ok = QtWidgets.QMessageBox.question(
+                self, "Clear DTCs & reset readiness",
+                "This erases stored trouble codes and freeze-frame data and resets the readiness "
+                "monitors. This cannot be undone. Continue?",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
+            if ok != QtWidgets.QMessageBox.Yes:
+                return
+            try:
+                done = conn.clear_dtcs()
+            except Exception as exc:  # noqa: BLE001
+                QtWidgets.QMessageBox.critical(self, "Failed", str(exc))
+                return
+            QtWidgets.QMessageBox.information(
+                self, "Resets", "Cleared." if done else "The ECU did not confirm the reset.")
+
     class OnboardTestsDialog(QtWidgets.QDialog):
         """Mode-06 on-board monitoring test results."""
 
@@ -2587,6 +2646,9 @@ if _HAVE_QT:
             garage_action = QtGui.QAction("&Garage…", self)
             garage_action.triggered.connect(self.show_garage)
             tools_menu.addAction(garage_action)
+            resets_action = QtGui.QAction("&Resets / Service…", self)
+            resets_action.triggered.connect(self.show_resets)
+            tools_menu.addAction(resets_action)
 
             help_menu = self.menuBar().addMenu("&Help")
             tour = QtGui.QAction("&Quick Tour", self)
@@ -2666,6 +2728,9 @@ if _HAVE_QT:
 
         def show_garage(self):
             GarageDialog(self, self).exec()
+
+        def show_resets(self):
+            ResetsDialog(self, self).exec()
 
         def show_help(self):
             HelpDialog(self._version, self).exec()

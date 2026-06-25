@@ -319,6 +319,13 @@ def test_garage_dialog_builds(qapp, tmp_path, monkeypatch):
     win.close()
 
 
+def test_resets_dialog_builds(qapp):
+    win = gui_app.MainWindow()
+    dlg = gui_app.ResetsDialog(win)
+    assert dlg.btn_clear is not None
+    win.close()
+
+
 def test_onboard_tests_dialog_builds(qapp):
     tests = [{"command": "MONITOR_CATALYST_B1", "name": "Catalyst", "value": 0.8,
               "min": 0.0, "max": 1.0, "passed": False}]

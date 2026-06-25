@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-06-25
+
+### Added
+- **Resets / Service** (Tools → Resets / Service…): a safe, standardized
+  **Clear DTCs & reset readiness monitors** action (mode 04) behind a
+  confirmation — plus an honest note that oil/service reset, coding/adaptations
+  and ECU tuning are manufacturer-specific (VCDS/OBDeleven/FORScan), often need
+  security access a generic ELM327 lacks, and are intentionally not performed
+  here to avoid bricking a module.
+
 ## [0.20.0] - 2026-06-25
 
 ### Added
@@ -305,7 +315,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.21.0...HEAD
+[0.21.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.21.0
 [0.20.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.20.0
 [0.19.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.19.0
 [0.18.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.18.0
