@@ -455,28 +455,51 @@ def _strip(value) -> Optional[float]:
 class PyOBDConnection:
     """Adapter around python-OBD (``obd.Async`` preferred, ``obd.OBD`` fallback)."""
 
-    def __init__(self, port: Optional[str] = None, baud: Optional[int] = None, prefer_async: bool = True):
-        import obd  # lazy: keeps the dependency out of import-time/CI
+    def __init__(
+        self,
+        port: Optional[str] = None,
+        baud: Optional[int] = None,
+        prefer_async: bool = False,
+        conn=None,
+        obd_module=None,
+        is_async: bool = False,
+    ):
+        # ``conn``/``obd_module`` let tests inject a fake adapter without hardware.
+        if obd_module is not None:
+            self._obd = obd_module
+        else:
+            import obd  # lazy: keeps the dependency out of import-time/CI
 
-        self._obd = obd
+            self._obd = obd
+        self._watching = False
+
+        if conn is not None:
+            self._conn = conn
+            self._is_async = is_async
+            return
+
+        obd = self._obd
         self._is_async = False
-        conn = None
+        built = None
         kwargs = {}
         if port:
             kwargs["portstr"] = port
         if baud:
             kwargs["baudrate"] = int(baud)
 
+        # Blocking obd.OBD is the default: one-shot reads (DTCs, snapshots,
+        # status) do real I/O, which obd.Async's watch-cache cannot. Async is
+        # opt-in for high-rate continuous logging.
         if prefer_async:
             try:
-                conn = obd.Async(**kwargs)
+                built = obd.Async(**kwargs)
                 self._is_async = True
             except Exception:  # noqa: BLE001 - fall back to blocking
-                conn = None
-        if conn is None:
-            conn = obd.OBD(**kwargs)
+                built = None
+        if built is None:
+            built = obd.OBD(**kwargs)
             self._is_async = False
-        self._conn = conn
+        self._conn = built
 
     def watch(self, command_names: Sequence[str]) -> None:
         if not self._is_async:
@@ -490,8 +513,27 @@ class PyOBDConnection:
                     pass
         try:
             self._conn.start()
+            self._watching = True
         except Exception:  # noqa: BLE001
             pass
+
+    def _one_shot(self, cmd):
+        """Do a real one-shot query, even on an Async connection.
+
+        ``obd.Async.query`` returns cached *watched* values, so for unwatched
+        commands (DTCs, pending codes, clear) we pause the loop and call the
+        blocking parent to actually hit the bus. ``force=True`` bypasses the
+        supported-PID gate (modes 03/04/07 are never in supported_commands).
+        """
+        if cmd is None:
+            return None
+        try:
+            if self._is_async:
+                with self._conn.paused():
+                    return self._obd.OBD.query(self._conn, cmd, force=True)
+            return self._conn.query(cmd, force=True)
+        except Exception:  # noqa: BLE001
+            return None
 
     def supported(self) -> "set[str]":
         try:
@@ -503,30 +545,42 @@ class PyOBDConnection:
         cmd = getattr(self._obd.commands, command_name, None)
         if cmd is None:
             return None
-        try:
-            resp = self._conn.query(cmd)
-        except Exception:  # noqa: BLE001
-            return None
+        # During Async logging read the watched value; otherwise do a real read.
+        if self._is_async and not self._watching:
+            resp = self._one_shot(cmd)
+        else:
+            try:
+                resp = self._conn.query(cmd)
+            except Exception:  # noqa: BLE001
+                return None
         if resp is None or resp.is_null():
             return None
         return _strip(resp.value)
 
     def get_dtcs(self) -> List[Tuple[str, str]]:
-        cmd = getattr(self._obd.commands, "GET_DTC", None)
-        if cmd is None:
-            return []
-        resp = self._conn.query(cmd)
-        if resp is None or resp.is_null() or not resp.value:
-            return []
-        return [(str(code), str(desc)) for code, desc in resp.value]
+        """Read stored (mode 03) and pending (mode 07) DTCs, de-duplicated."""
+        out: List[Tuple[str, str]] = []
+        seen = set()
+        for name in ("GET_DTC", "GET_CURRENT_DTC"):
+            cmd = getattr(self._obd.commands, name, None)
+            resp = self._one_shot(cmd)
+            if resp is None or resp.is_null() or not resp.value:
+                continue
+            for code, desc in resp.value:
+                key = str(code)
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append((str(code), str(desc)))
+        return out
 
     def clear_dtcs(self) -> bool:
         """Clear stored DTCs. EXPLICIT user action only — never call automatically."""
         cmd = getattr(self._obd.commands, "CLEAR_DTC", None)
         if cmd is None:
             return False
-        resp = self._conn.query(cmd, force=True)
-        return resp is not None and not resp.is_null()
+        resp = self._one_shot(cmd)
+        return resp is not None
 
     def status(self) -> str:
         try:
@@ -710,7 +764,7 @@ def scan_ports() -> List[str]:
 def connect(
     port: Optional[str] = None,
     baud: Optional[int] = None,
-    prefer_async: bool = True,
+    prefer_async: bool = False,
     prefer: str = "library",
 ):
     """Connect to an ELM327, trying python-OBD first and raw AT as last resort.
