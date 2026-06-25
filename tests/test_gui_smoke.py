@@ -168,6 +168,53 @@ def test_pdf_export_path(qapp, tmp_path, samples_dir):
     assert out.is_file() and out.stat().st_size > 0
 
 
+def test_mcp_install_dialog_builds(qapp):
+    dlg = gui_app.McpInstallDialog(r"C:\Ross-Tech\VCDS\Logs")
+    assert dlg.logs_edit.text() == r"C:\Ross-Tech\VCDS\Logs"
+    assert dlg.btn_install is not None
+
+
+def test_pid_search_filter_and_select(qapp):
+    from PySide6 import QtCore, QtWidgets
+
+    win = gui_app.MainWindow()
+    tab = win.live_tab
+    for name in ["Engine RPM", "Coolant Temp", "Boost (derived)", "Fuel Level"]:
+        it = QtWidgets.QListWidgetItem(name)
+        it.setFlags(it.flags() | QtCore.Qt.ItemIsUserCheckable)
+        it.setCheckState(QtCore.Qt.Unchecked)
+        it.setData(QtCore.Qt.UserRole, name)
+        tab.pid_list.addItem(it)
+
+    tab._filter_pids("fuel")
+    visible = [tab.pid_list.item(i).text() for i in range(tab.pid_list.count())
+               if not tab.pid_list.item(i).isHidden()]
+    assert visible == ["Fuel Level"]
+
+    tab._set_pids_checked(True, only_visible=True)
+    assert tab.pid_list.item(3).checkState() == QtCore.Qt.Checked  # Fuel Level
+    assert tab.pid_list.item(0).checkState() == QtCore.Qt.Unchecked  # hidden, untouched
+    assert "1 selected" in tab.lbl_pid_count.text()
+    win.close()
+
+
+def test_live_dtc_tree_enriched(qapp):
+    win = gui_app.MainWindow()
+    tab = win.live_tab
+
+    class FakeConn:
+        def get_dtcs(self):
+            return [("P0299", "Turbo/Supercharger Underboost")]
+
+    tab.conn = FakeConn()
+    tab.read_dtcs()
+    root = tab.dtc_tree.topLevelItem(0)
+    assert "P0299" in root.text(0)
+    assert root.text(1) == "HIGH"  # severity from knowledge base
+    assert root.childCount() >= 1  # likely-causes node
+    win.close()
+
+
 def test_analyzer_loads_autoscan(qapp, samples_dir):
     win = gui_app.MainWindow()
     tab = win.analyzer

@@ -536,9 +536,35 @@ if _HAVE_QT:
 
             left = QtWidgets.QWidget()
             lv = QtWidgets.QVBoxLayout(left)
-            lv.addWidget(QtWidgets.QLabel("<b>Supported PIDs</b>"))
+            lv.setContentsMargins(0, 0, 0, 0)
+            left_split = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+            lv.addWidget(left_split)
+
+            # --- PID picker: searchable + resizable -------------------------- #
+            pid_box = QtWidgets.QWidget()
+            pv = QtWidgets.QVBoxLayout(pid_box)
+            pv.setContentsMargins(0, 0, 0, 0)
+            pv.addWidget(QtWidgets.QLabel("<b>Supported PIDs</b>"))
+            self.pid_search = QtWidgets.QLineEdit()
+            self.pid_search.setPlaceholderText("Search PIDs…  (e.g. boost, temp, fuel, O2)")
+            self.pid_search.setClearButtonEnabled(True)
+            self.pid_search.textChanged.connect(self._filter_pids)
+            pv.addWidget(self.pid_search)
             self.pid_list = QtWidgets.QListWidget()
-            lv.addWidget(self.pid_list, 2)
+            self.pid_list.setMinimumHeight(240)
+            self.pid_list.itemChanged.connect(self._update_pid_count)
+            pv.addWidget(self.pid_list, 1)
+            pid_btns = QtWidgets.QHBoxLayout()
+            self.btn_pid_all = QtWidgets.QPushButton("Select shown")
+            self.btn_pid_none = QtWidgets.QPushButton("Clear all")
+            self.btn_pid_all.clicked.connect(lambda: self._set_pids_checked(True, only_visible=True))
+            self.btn_pid_none.clicked.connect(lambda: self._set_pids_checked(False, only_visible=False))
+            self.lbl_pid_count = QtWidgets.QLabel("")
+            pid_btns.addWidget(self.btn_pid_all)
+            pid_btns.addWidget(self.btn_pid_none)
+            pid_btns.addWidget(self.lbl_pid_count, 1)
+            pv.addLayout(pid_btns)
+            left_split.addWidget(pid_box)
 
             trig_box = QtWidgets.QGroupBox("Event-capture trigger")
             tv = QtWidgets.QVBoxLayout(trig_box)
@@ -558,30 +584,34 @@ if _HAVE_QT:
             tv.addLayout(trow)
             self.trig_label = QtWidgets.QLabel("No threshold rules.")
             tv.addWidget(self.trig_label)
-            lv.addWidget(trig_box)
+            left_split.addWidget(trig_box)
 
             dtc_box = QtWidgets.QGroupBox("Stored DTCs")
             dv = QtWidgets.QVBoxLayout(dtc_box)
-            self.dtc_list = QtWidgets.QListWidget()
-            dv.addWidget(self.dtc_list)
+            self.dtc_tree = QtWidgets.QTreeWidget()
+            self.dtc_tree.setHeaderLabels(["Stored DTC / likely cause", "Severity"])
+            self.dtc_tree.setColumnWidth(0, 250)
+            dv.addWidget(self.dtc_tree)
             dbar = QtWidgets.QHBoxLayout()
             self.btn_read_dtc = QtWidgets.QPushButton("Read DTCs")
             self.btn_clear_dtc = QtWidgets.QPushButton("Clear DTCs…")
             dbar.addWidget(self.btn_read_dtc)
             dbar.addWidget(self.btn_clear_dtc)
             dv.addLayout(dbar)
-            lv.addWidget(dtc_box)
+            left_split.addWidget(dtc_box)
 
             cap_box = QtWidgets.QGroupBox("Captured events (double-click to analyze)")
             cv = QtWidgets.QVBoxLayout(cap_box)
             self.capture_list = QtWidgets.QListWidget()
             cv.addWidget(self.capture_list)
-            lv.addWidget(cap_box)
+            left_split.addWidget(cap_box)
+            # Give the PID list the lion's share; the rest stays compact.
+            left_split.setSizes([460, 130, 170, 120])
 
             split.addWidget(left)
             self.plot = PlotPanel()
             split.addWidget(self.plot)
-            split.setSizes([340, 760])
+            split.setSizes([400, 720])
 
             # logging controls
             run_bar = QtWidgets.QHBoxLayout()
@@ -653,11 +683,38 @@ if _HAVE_QT:
                 item.setCheckState(QtCore.Qt.Checked if is_default else QtCore.Qt.Unchecked)
                 item.setData(QtCore.Qt.UserRole, ch.name)
                 self.pid_list.addItem(item)
+            self.pid_search.clear()
+            self._filter_pids("")
+            self._update_pid_count()
             self.conn_status.setText(
                 f"<span style='color:#38A169'>Connected</span> — {self.conn.protocol()} "
                 f"({len(supported)} PIDs)"
             )
             self._set_connected(True)
+
+        # -- PID picker helpers -------------------------------------------- #
+        def _filter_pids(self, text: str):
+            needle = text.strip().lower()
+            for i in range(self.pid_list.count()):
+                it = self.pid_list.item(i)
+                it.setHidden(needle not in it.text().lower())
+            self._update_pid_count()
+
+        def _set_pids_checked(self, checked: bool, only_visible: bool = True):
+            state = QtCore.Qt.Checked if checked else QtCore.Qt.Unchecked
+            for i in range(self.pid_list.count()):
+                it = self.pid_list.item(i)
+                if only_visible and it.isHidden():
+                    continue
+                it.setCheckState(state)
+
+        def _update_pid_count(self, *_):
+            total = self.pid_list.count()
+            checked = sum(
+                1 for i in range(total)
+                if self.pid_list.item(i).checkState() == QtCore.Qt.Checked
+            )
+            self.lbl_pid_count.setText(f"{checked} selected / {total}")
 
         def disconnect_adapter(self):
             if self.conn is not None:
@@ -698,16 +755,32 @@ if _HAVE_QT:
         def read_dtcs(self):
             if self.conn is None:
                 return
-            self.dtc_list.clear()
+            self.dtc_tree.clear()
             try:
                 dtcs = live.read_dtcs(self.conn)
             except Exception as exc:  # noqa: BLE001
-                self.dtc_list.addItem(f"Error: {exc}")
+                self.dtc_tree.addTopLevelItem(QtWidgets.QTreeWidgetItem([f"Error: {exc}", ""]))
                 return
             if not dtcs:
-                self.dtc_list.addItem("No stored DTCs.")
+                self.dtc_tree.addTopLevelItem(QtWidgets.QTreeWidgetItem(["No stored DTCs.", ""]))
+                return
             for code, desc in dtcs:
-                self.dtc_list.addItem(f"{code} — {desc}")
+                k = knowledge.lookup(code)
+                node = QtWidgets.QTreeWidgetItem([f"{code} — {desc or k.description}", k.severity.upper()])
+                node.setForeground(1, QtGui.QColor(_SEVERITY_COLORS.get(k.severity, "#000000")))
+                font = node.font(0)
+                font.setBold(True)
+                node.setFont(0, font)
+                if k.notes:
+                    node.addChild(QtWidgets.QTreeWidgetItem([k.notes, ""]))
+                if k.causes:
+                    causes = QtWidgets.QTreeWidgetItem(["Likely causes (most likely first):", ""])
+                    for c in k.causes:
+                        causes.addChild(QtWidgets.QTreeWidgetItem([f"•  {c}", ""]))
+                    node.addChild(causes)
+                    causes.setExpanded(True)
+                self.dtc_tree.addTopLevelItem(node)
+                node.setExpanded(True)
 
         def clear_dtcs(self):
             if self.conn is None:
@@ -1211,6 +1284,82 @@ if _HAVE_QT:
             self.label.setText(text)
             self.show()
 
+    class McpInstallDialog(QtWidgets.QDialog):
+        """One-click registration of the MCP server with Claude Desktop / Code."""
+
+        def __init__(self, default_logs_dir: str, parent=None):
+            super().__init__(parent)
+            from vcds_mcp import install as mcp_install
+
+            self._install = mcp_install
+            self.setWindowTitle("Install MCP Server for Claude")
+            self.resize(620, 500)
+            v = QtWidgets.QVBoxLayout(self)
+
+            info = QtWidgets.QLabel(
+                "Register this app as an <b>MCP server</b> so Claude can read your "
+                "VCDS logs and run diagnostics for you.<br><br>"
+                "A local stdio server attaches to <b>Claude Desktop</b> and "
+                "<b>Claude Code</b> (not the claude.ai web app). Claude Desktop "
+                "must be restarted afterwards."
+            )
+            info.setWordWrap(True)
+            info.setTextFormat(QtCore.Qt.RichText)
+            v.addWidget(info)
+
+            row = QtWidgets.QHBoxLayout()
+            row.addWidget(QtWidgets.QLabel("Logs folder:"))
+            self.logs_edit = QtWidgets.QLineEdit(default_logs_dir)
+            browse = QtWidgets.QPushButton("Browse…")
+            browse.clicked.connect(self._browse)
+            row.addWidget(self.logs_edit, 1)
+            row.addWidget(browse)
+            v.addLayout(row)
+
+            self.chk_desktop = QtWidgets.QCheckBox("Claude Desktop")
+            self.chk_desktop.setChecked(True)
+            self.chk_code = QtWidgets.QCheckBox("Claude Code (CLI)")
+            code_ok = mcp_install.claude_code_available()
+            self.chk_code.setChecked(code_ok)
+            self.chk_code.setEnabled(code_ok)
+            if not code_ok:
+                self.chk_code.setText("Claude Code (CLI) — not found on PATH")
+            v.addWidget(self.chk_desktop)
+            v.addWidget(self.chk_code)
+
+            self.btn_install = QtWidgets.QPushButton("Install")
+            self.btn_install.clicked.connect(self._do_install)
+            v.addWidget(self.btn_install)
+
+            self.results = QtWidgets.QTextEdit()
+            self.results.setReadOnly(True)
+            v.addWidget(self.results, 1)
+
+            buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Close)
+            buttons.rejected.connect(self.reject)
+            buttons.accepted.connect(self.accept)
+            v.addWidget(buttons)
+
+        def _browse(self):
+            d = QtWidgets.QFileDialog.getExistingDirectory(
+                self, "Select VCDS Logs folder", self.logs_edit.text()
+            )
+            if d:
+                self.logs_edit.setText(d)
+
+        def _do_install(self):
+            logs = self.logs_edit.text().strip() or DEFAULT_LOGS_DIR
+            lines = []
+            if self.chk_desktop.isChecked():
+                ok, msg = self._install.install_claude_desktop(logs)
+                lines.append(("✅ " if ok else "❌ ") + "Claude Desktop: " + msg)
+            if self.chk_code.isChecked():
+                ok, msg = self._install.install_claude_code(logs)
+                lines.append(("✅ " if ok else "❌ ") + "Claude Code: " + msg)
+            if not lines:
+                lines = ["Select at least one target above."]
+            self.results.setPlainText("\n\n".join(lines))
+
     # --------------------------------------------------------------------- #
     # Main window
     # --------------------------------------------------------------------- #
@@ -1257,6 +1406,11 @@ if _HAVE_QT:
             QtCore.QTimer.singleShot(1500, self._maybe_startup_update_check)
 
         def _build_menu(self):
+            tools_menu = self.menuBar().addMenu("&Tools")
+            mcp_action = QtGui.QAction("Install &MCP Server (for Claude)…", self)
+            mcp_action.triggered.connect(self.show_mcp_install)
+            tools_menu.addAction(mcp_action)
+
             help_menu = self.menuBar().addMenu("&Help")
             tour = QtGui.QAction("&Quick Tour", self)
             tour.triggered.connect(lambda: self.show_tour(force=True))
@@ -1298,6 +1452,9 @@ if _HAVE_QT:
         def show_tour(self, force: bool = False):
             show_default = self.settings.value("ui/show_tour", True, type=bool)
             QuickTourDialog(self.settings, show_default, self).exec()
+
+        def show_mcp_install(self):
+            McpInstallDialog(DEFAULT_LOGS_DIR, self).exec()
 
         def show_help(self):
             HelpDialog(self._version, self).exec()

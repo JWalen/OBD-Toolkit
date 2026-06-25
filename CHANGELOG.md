@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-06-24
+
+### Added
+- **One-click "Install MCP Server (for Claude)"** (Tools menu): registers the
+  server with Claude Desktop (writes the config, backing up any existing one)
+  and/or Claude Code (via the `claude` CLI). The installer now ships a dedicated
+  console **`vcds-mcp.exe`** alongside the GUI, so no separate Python is needed.
+- **Searchable, resizable PID picker** in the Live tab — a search box, "Select
+  shown" / "Clear all", a selected/total count, and a draggable splitter so the
+  list can be made as large as you like (handy with 100+ supported PIDs).
+- **Stored DTCs now show descriptions, severity and likely causes/fixes** in the
+  Live tab (a color-coded tree), and the MCP `read_live_dtcs` tool returns the
+  same enriched data for Claude.
+
 ## [0.4.1] - 2026-06-24
 
 ### Added
@@ -122,7 +136,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.5.0
 [0.4.1]: https://github.com/JWalen/VAGScanner/releases/tag/v0.4.1
 [0.4.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.4.0
 [0.3.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.3.0

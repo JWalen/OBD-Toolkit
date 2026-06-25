@@ -14,6 +14,8 @@ from __future__ import annotations
 import os
 from typing import List, Optional
 
+from vcds_core import knowledge
+
 from . import live
 
 
@@ -56,11 +58,18 @@ def read_live_dtcs_impl(logs_dir: str, port: Optional[str] = None) -> dict:
         return {"connected": False, "error": f"No ELM327 adapter: {exc}", "dtcs": []}
     try:
         dtcs = live.read_dtcs(conn)
-        return {
-            "connected": True,
-            "count": len(dtcs),
-            "dtcs": [{"code": c, "description": d} for c, d in dtcs],
-        }
+        out = []
+        for code, desc in dtcs:
+            k = knowledge.lookup(code)
+            out.append({
+                "code": code,
+                "description": desc or k.description,
+                "severity": k.severity,
+                "system": k.system,
+                "likely_causes": k.causes,
+                "notes": k.notes,
+            })
+        return {"connected": True, "count": len(out), "dtcs": out}
     finally:
         _close(conn)
 

@@ -18,11 +18,19 @@ SPEC_DIR = os.path.abspath(SPECPATH)
 ROOT = os.path.dirname(SPEC_DIR)
 SRC = os.path.join(ROOT, "src")
 ENTRY = os.path.join(SRC, "vcds_gui", "__main__.py")
+MCP_ENTRY = os.path.join(SRC, "vcds_mcp", "__main__.py")
 ICON = os.path.join(SPEC_DIR, "app.ico")
 ICON = ICON if os.path.isfile(ICON) else None
 
 # pyqtgraph does a lot of dynamic importing; pull it in wholesale to be safe.
 pg_datas, pg_binaries, pg_hidden = collect_all("pyqtgraph")
+
+# The bundled exe can also serve the MCP server (`VCDS Toolkit.exe --mcp`), so
+# pull in the FastMCP stack.
+try:
+    mcp_datas, mcp_binaries, mcp_hidden = collect_all("mcp")
+except Exception:
+    mcp_datas, mcp_binaries, mcp_hidden = [], [], []
 
 # Bundle the installed dist metadata so importlib.metadata.version("vcds-toolkit")
 # resolves at runtime (otherwise __version__ falls back and shows the wrong
@@ -48,14 +56,19 @@ icon_datas = [(ICON, ".")] if ICON else []
 a = Analysis(
     [ENTRY],
     pathex=[SRC],
-    binaries=pg_binaries,
-    datas=pg_datas + example_datas + icon_datas + meta_datas,
+    binaries=pg_binaries + mcp_binaries,
+    datas=pg_datas + example_datas + icon_datas + meta_datas + mcp_datas,
     hiddenimports=pg_hidden
+    + mcp_hidden
     + [
         "vcds_core",
         "vcds_core.parse",
         "vcds_obd",
         "vcds_obd.live",
+        "vcds_obd.mcp_tools",
+        "vcds_mcp",
+        "vcds_mcp.server",
+        "vcds_mcp.install",
         "certifi",  # CA bundle for the in-app updater's HTTPS check
     ],
     hookspath=[],
@@ -81,8 +94,38 @@ a = Analysis(
     noarchive=False,
 )
 
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+# Second target: a CONSOLE exe that serves the MCP server over stdio. A windowed
+# (GUI) exe has no stdin/stdout, so it cannot speak the stdio protocol — hence a
+# dedicated console binary that Claude Desktop/Code launches. MERGE shares all
+# the common dependencies with the GUI bundle (no duplication on disk).
+a_mcp = Analysis(
+    [MCP_ENTRY],
+    pathex=[SRC],
+    binaries=mcp_binaries,
+    datas=meta_datas + mcp_datas,
+    hiddenimports=mcp_hidden
+    + [
+        "vcds_core",
+        "vcds_core.parse",
+        "vcds_obd",
+        "vcds_obd.live",
+        "vcds_obd.mcp_tools",
+        "vcds_mcp",
+        "vcds_mcp.server",
+    ],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=["PySide6", "pyqtgraph", "PyQt5", "PyQt6", "tkinter", "matplotlib"],
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
+    cipher=block_cipher,
+    noarchive=False,
+)
 
+MERGE((a, "VCDS Toolkit", "VCDS Toolkit"), (a_mcp, "vcds-mcp", "vcds-mcp"))
+
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
@@ -102,11 +145,30 @@ exe = EXE(
     icon=ICON,  # installer/app.ico — see scripts/make_icon.py
 )
 
+pyz_mcp = PYZ(a_mcp.pure, a_mcp.zipped_data, cipher=block_cipher)
+exe_mcp = EXE(
+    pyz_mcp,
+    a_mcp.scripts,
+    [],
+    exclude_binaries=True,
+    name="vcds-mcp",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=False,
+    console=True,  # MUST be a console app for stdio
+    icon=ICON,
+)
+
 coll = COLLECT(
     exe,
     a.binaries,
     a.zipfiles,
     a.datas,
+    exe_mcp,
+    a_mcp.binaries,
+    a_mcp.zipfiles,
+    a_mcp.datas,
     strip=False,
     upx=False,
     upx_exclude=[],
