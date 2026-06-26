@@ -43,6 +43,29 @@ def test_ai_tab_builds(qapp):
     tab.provider_combo.setCurrentIndex(0)
     assert tab.model_combo.count() >= 1  # provider change populated models
     assert "Get a key" in tab.key_link.text()
+    assert tab.chk_tools.isChecked()  # AI-browses-logs toggle present
+    assert isinstance(tab.input, gui_app.ChatInput)
+    win.close()
+
+
+def test_markdown_rendering():
+    h = gui_app._md_to_html("# Title\n\n- one\n- two\n\n**bold** and `code`")
+    assert "<b>Title</b>" in h
+    assert "<li>one</li>" in h and "<li>two</li>" in h
+    assert "<b>bold</b>" in h and "<code" in h
+
+
+def test_chat_render_flow(qapp):
+    win = gui_app.MainWindow()
+    tab = win.ai_tab
+    tab.history = [{"role": "user", "content": "hi there"},
+                   {"role": "assistant", "content": "# Hello\n- a\n- b"}]
+    tab._render()
+    html = tab.conversation.toHtml()
+    assert "You" in html and "Assistant" in html
+    assert "hi there" in html and "Hello" in html
+    tab._on_tool("list_logs")   # tool activity shows in the typing indicator
+    assert "list logs" in tab.conversation.toHtml()
     win.close()
 
 

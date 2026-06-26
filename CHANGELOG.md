@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-06-25
+
+### Changed
+- **AI chat now feels like a normal chat**: assistant replies render **Markdown**
+  (headings, bold/italic, bullet & numbered lists, code), messages show as clean
+  **You / Assistant** blocks with auto-scroll, **Enter sends** (Shift+Enter for a
+  newline), a live **typing indicator**, and a **"🔧 reading logs…"** activity line
+  while the assistant is browsing your logs.
+
 ## [1.1.0] - 2026-06-25
 
 ### Added
@@ -357,7 +366,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.2.0
 [1.1.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.1.0
 [1.0.1]: https://github.com/JWalen/VAGScanner/releases/tag/v1.0.1
 [1.0.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.0.0

@@ -20,7 +20,9 @@ single clean crosshair instead of a forest of stacked y-axes.
 from __future__ import annotations
 
 import bisect
+import html as _html
 import os
+import re
 import sys
 import threading
 import time
@@ -2022,9 +2024,22 @@ if _HAVE_QT:
     # --------------------------------------------------------------------- #
     # Tab 3 — AI Assistant
     # --------------------------------------------------------------------- #
+    class ChatInput(QtWidgets.QPlainTextEdit):
+        """Multiline input that sends on Enter (Shift+Enter inserts a newline)."""
+
+        send_requested = QtCore.Signal()
+
+        def keyPressEvent(self, ev):
+            if (ev.key() in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter)
+                    and not (ev.modifiers() & QtCore.Qt.ShiftModifier)):
+                self.send_requested.emit()
+                return
+            super().keyPressEvent(ev)
+
     class AiChatWorker(QtCore.QObject):
         done = QtCore.Signal(str)
         failed = QtCore.Signal(str)
+        tool = QtCore.Signal(str)
 
         def __init__(self, provider, key, model, system, messages, tools=None, executor=None):
             super().__init__()
@@ -2038,9 +2053,15 @@ if _HAVE_QT:
 
         @QtCore.Slot()
         def run(self):
+            ex = self.executor
+
+            def wrapped(name, args):
+                self.tool.emit(name)
+                return ex(name, args) if ex else {}
+
             try:
                 reply = ai.chat(self.provider, self.key, self.model, self.system, self.messages,
-                                tools=self.tools, tool_executor=self.executor)
+                                tools=self.tools, tool_executor=(wrapped if ex else None))
                 self.done.emit(reply)
             except Exception as exc:  # noqa: BLE001
                 self.failed.emit(str(exc))
@@ -2053,6 +2074,8 @@ if _HAVE_QT:
             self.history: list = []
             self._thread = None
             self._worker = None
+            self._pending = None
+            self._error = None
             self._build()
             self._load_provider_settings()
 
@@ -2101,8 +2124,8 @@ if _HAVE_QT:
             v.addWidget(self.conversation, 1)
 
             entry = QtWidgets.QHBoxLayout()
-            self.input = QtWidgets.QPlainTextEdit()
-            self.input.setPlaceholderText("Ask about the vehicle…  (Ctrl+Enter to send)")
+            self.input = ChatInput()
+            self.input.setPlaceholderText("Message…  (Enter to send, Shift+Enter for a new line)")
             self.input.setMaximumHeight(90)
             entry.addWidget(self.input, 1)
             self.btn_send = QtWidgets.QPushButton("Send")
@@ -2113,10 +2136,9 @@ if _HAVE_QT:
             self.btn_save_key.clicked.connect(self._save_key)
             self.btn_send.clicked.connect(self.send)
             self.btn_clear_chat.clicked.connect(self._clear_chat)
-            send_sc = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Return"), self.input)
-            send_sc.activated.connect(self.send)
+            self.input.send_requested.connect(self.send)
 
-            self._render_intro()
+            self._render()
 
         # -- settings ------------------------------------------------------- #
         def _provider_changed(self):
@@ -2147,23 +2169,37 @@ if _HAVE_QT:
             )
 
         # -- chat ----------------------------------------------------------- #
-        def _render_intro(self):
-            self.conversation.setHtml(
-                "<p style='color:#718096'>Ask the assistant to help diagnose your car. "
-                "It can use the scan/log currently open in the File Analyzer tab as "
-                "context. Pick a provider, paste an API key, and Save.</p>"
-            )
-
         def _clear_chat(self):
             self.history = []
-            self._render_intro()
+            self._pending = None
+            self._error = None
+            self._render()
 
-        def _append(self, who: str, text: str, color: str):
-            safe = (text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                    .replace("\n", "<br>"))
-            self.conversation.append(
-                f"<p><b style='color:{color}'>{who}:</b><br>{safe}</p>"
-            )
+        def _render(self):
+            if not self.history and not self._pending and not self._error:
+                self.conversation.setHtml(
+                    "<div style='color:#718096'>Ask the assistant to help diagnose your car. "
+                    "It uses the scan/log open in the File Analyzer tab and can browse your "
+                    "stored logs. Pick a provider, paste an API key, and Save.</div>")
+                return
+            blocks = []
+            for m in self.history:
+                if m["role"] == "user":
+                    blocks.append(
+                        "<div style='border-left:3px solid #0066CC;padding-left:8px;margin:10px 0'>"
+                        f"<b style='color:#0066CC'>You</b><br>{_esc_br(m['content'])}</div>")
+                else:
+                    blocks.append(
+                        "<div style='border-left:3px solid #00897B;padding-left:8px;margin:10px 0'>"
+                        f"<b style='color:#00897B'>Assistant</b><br>{_md_to_html(m['content'])}</div>")
+            if self._pending:
+                blocks.append(f"<div style='color:#718096;margin:10px 0'><i>{self._pending}</i></div>")
+            if self._error:
+                blocks.append(f"<div style='color:#E53E3E;margin:10px 0'><b>Error:</b> "
+                              f"{_html.escape(self._error)}</div>")
+            self.conversation.setHtml("".join(blocks))
+            sb = self.conversation.verticalScrollBar()
+            sb.setValue(sb.maximum())
 
         def _build_context(self) -> str:
             if not self.chk_context.isChecked():
@@ -2187,10 +2223,11 @@ if _HAVE_QT:
                 return
             model = self.model_combo.currentText().strip()
             self.history.append({"role": "user", "content": text})
-            self._append("You", text, "#0066CC")
             self.input.clear()
             self.btn_send.setEnabled(False)
-            self.conversation.append("<p style='color:#718096'><i>Thinking…</i></p>")
+            self._error = None
+            self._pending = "Assistant is typing…"
+            self._render()
 
             prof = profiles.get_profile(
                 self.settings.value("ui/profile", profiles.DEFAULT_PROFILE, type=str))
@@ -2211,22 +2248,30 @@ if _HAVE_QT:
             self._thread.started.connect(self._worker.run)
             self._worker.done.connect(self._on_reply)
             self._worker.failed.connect(self._on_error)
+            self._worker.tool.connect(self._on_tool)
             self._worker.done.connect(self._thread.quit)
             self._worker.failed.connect(self._thread.quit)
             self._thread.start()
 
         @QtCore.Slot(str)
+        def _on_tool(self, name):
+            pretty = name.replace("_", " ")
+            self._pending = f"🔧 {pretty}…"
+            self._render()
+
+        @QtCore.Slot(str)
         def _on_reply(self, reply):
             self.history.append({"role": "assistant", "content": reply})
-            self._append("Assistant", reply, "#00897B")
+            self._pending = None
             self.btn_send.setEnabled(True)
+            self._render()
 
         @QtCore.Slot(str)
         def _on_error(self, msg):
-            self.conversation.append(
-                f"<p style='color:#E53E3E'><b>Error:</b> {msg}</p>"
-            )
+            self._pending = None
+            self._error = msg
             self.btn_send.setEnabled(True)
+            self._render()
 
     class ResetsDialog(QtWidgets.QDialog):
         """Safe, standardized OBD-II write actions (and an honest note on the rest)."""
@@ -2906,6 +2951,77 @@ def _fmt_num(x):
     if x is None:
         return "—"
     return f"{x:g}" if isinstance(x, float) else str(x)
+
+
+def _esc_br(s: str) -> str:
+    return _html.escape(s or "").replace("\n", "<br>")
+
+
+def _md_inline(s: str) -> str:
+    s = _html.escape(s)
+    s = re.sub(r"`([^`]+)`", r"<code style='font-family:Consolas,monospace'>\1</code>", s)
+    s = re.sub(r"\*\*([^*]+)\*\*", r"<b>\1</b>", s)
+    s = re.sub(r"__([^_]+)__", r"<b>\1</b>", s)
+    s = re.sub(r"(?<![\*\w])\*([^*\n]+)\*(?!\*)", r"<i>\1</i>", s)
+    s = re.sub(r"\[([^\]]+)\]\((https?://[^)\s]+)\)", r"<a href='\2'>\1</a>", s)
+    return s
+
+
+def _md_to_html(text: str) -> str:
+    """Minimal Markdown -> HTML for rendering AI replies (headings, lists, code, etc.)."""
+    out, code, in_code, list_type = [], [], False, None
+
+    def close_list():
+        nonlocal list_type
+        if list_type:
+            out.append(f"</{list_type}>")
+            list_type = None
+
+    for line in (text or "").replace("\r\n", "\n").split("\n"):
+        if line.strip().startswith("```"):
+            if in_code:
+                out.append("<pre style='font-family:Consolas,monospace;border:1px solid #8888;"
+                           "padding:6px'>" + _html.escape("\n".join(code)) + "</pre>")
+                code, in_code = [], False
+            else:
+                close_list()
+                in_code = True
+            continue
+        if in_code:
+            code.append(line)
+            continue
+        st = line.strip()
+        if not st:
+            close_list()
+            out.append("<div style='height:6px'></div>")
+            continue
+        m = re.match(r"^(#{1,6})\s+(.*)$", st)
+        if m:
+            close_list()
+            out.append(f"<div><b>{_md_inline(m.group(2))}</b></div>")
+            continue
+        m = re.match(r"^[-*+]\s+(.*)$", st)
+        if m:
+            if list_type != "ul":
+                close_list()
+                out.append("<ul style='margin:2px 0 2px 18px'>")
+                list_type = "ul"
+            out.append(f"<li>{_md_inline(m.group(1))}</li>")
+            continue
+        m = re.match(r"^\d+\.\s+(.*)$", st)
+        if m:
+            if list_type != "ol":
+                close_list()
+                out.append("<ol style='margin:2px 0 2px 18px'>")
+                list_type = "ol"
+            out.append(f"<li>{_md_inline(m.group(1))}</li>")
+            continue
+        close_list()
+        out.append(f"<div>{_md_inline(line)}</div>")
+    if in_code and code:
+        out.append("<pre>" + _html.escape("\n".join(code)) + "</pre>")
+    close_list()
+    return "".join(out)
 
 
 def _safe_session_name(name: str):
