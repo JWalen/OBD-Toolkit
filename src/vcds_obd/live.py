@@ -556,6 +556,10 @@ class PyOBDConnection:
             self._is_async = False
         self._conn = built
 
+    @property
+    def is_async(self) -> bool:
+        return self._is_async
+
     def watch(self, command_names: Sequence[str]) -> None:
         if not self._is_async:
             return
@@ -571,6 +575,27 @@ class PyOBDConnection:
             self._watching = True
         except Exception:  # noqa: BLE001
             pass
+
+    def rewatch(self, command_names: Sequence[str]) -> None:
+        """Replace the Async watch-list with exactly these commands.
+
+        In async ("smooth") mode the adapter polls the watched commands in the
+        background; reads then come from a continuously-updated cache instead of
+        a per-PID bus round-trip — so the live stream is far smoother. No-op on a
+        blocking connection.
+        """
+        if not self._is_async:
+            return
+        try:
+            self._conn.stop()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            self._conn.unwatch_all()
+        except Exception:  # noqa: BLE001
+            pass
+        self._watching = False
+        self.watch([n for n in command_names if n])
 
     def _one_shot(self, cmd):
         """Do a real one-shot query, even on an Async connection.

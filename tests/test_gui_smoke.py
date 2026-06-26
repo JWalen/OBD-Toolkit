@@ -184,6 +184,7 @@ def test_live_data_window(qapp):
 def test_live_tab_has_livedata_button(qapp):
     win = gui_app.MainWindow()
     assert win.live_tab.btn_livedata is not None
+    assert win.live_tab.chk_async is not None  # smooth/async toggle
     win.close()
 
 

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-06-26
+
+### Added
+- **Smooth (Async) live mode.** A new **⚡ Smooth** checkbox on the Adapter bar
+  connects with `obd.Async`: the adapter polls the watched PIDs in the background
+  and the app reads from a continuously-updated cache, so Live Data, gauges and
+  recording stream much more smoothly at high rates. The watch-list follows
+  whatever PIDs you're streaming (`PyOBDConnection.rewatch`); one-shot reads
+  (DTCs, VIN, resets) still hit the bus correctly. Status shows "⚡ smooth".
+
 ## [1.12.0] - 2026-06-26
 
 ### Changed
@@ -503,7 +513,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.12.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.13.0...HEAD
+[1.13.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.13.0
 [1.12.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.12.0
 [1.11.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.11.0
 [1.10.1]: https://github.com/JWalen/VAGScanner/releases/tag/v1.10.1

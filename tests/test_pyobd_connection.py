@@ -67,8 +67,43 @@ class _FakeConn:
         pass
 
 
+class _FakeAsyncConn(_FakeConn):
+    def __init__(self):
+        super().__init__()
+        self.watched = []
+        self.started = self.stopped = self.unwatched = 0
+
+    def watch(self, cmd):
+        self.watched.append(cmd.name)
+
+    def unwatch_all(self):
+        self.unwatched += 1
+        self.watched = []
+
+    def start(self):
+        self.started += 1
+
+    def stop(self):
+        self.stopped += 1
+
+
 def _conn(fake=None):
     return live.PyOBDConnection(conn=fake or _FakeConn(), obd_module=_FakeObd, is_async=False)
+
+
+def test_rewatch_async_replaces_watchlist():
+    fake = _FakeAsyncConn()
+    c = live.PyOBDConnection(conn=fake, obd_module=_FakeObd, is_async=True)
+    assert c.is_async
+    c.rewatch(["RPM"])
+    assert fake.watched == ["RPM"]
+    assert fake.started >= 1 and fake.stopped >= 1 and fake.unwatched >= 1
+
+
+def test_rewatch_blocking_is_noop():
+    fake = _FakeConn()
+    live.PyOBDConnection(conn=fake, obd_module=_FakeObd, is_async=False).rewatch(["RPM"])
+    assert not hasattr(fake, "watched")  # blocking connection untouched
 
 
 def test_get_dtcs_forces_command_and_merges_pending():

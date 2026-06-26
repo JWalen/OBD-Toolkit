@@ -930,12 +930,15 @@ if _HAVE_QT:
             self.btn_wifi.setToolTip("Connect to a Wi-Fi ELM327 adapter (e.g. 192.168.0.10:35000)")
             self.baud_combo = QtWidgets.QComboBox()
             self.baud_combo.addItems(["Auto", "38400", "9600", "115200"])
+            self.chk_async = QtWidgets.QCheckBox("⚡ Smooth")
+            self.chk_async.setToolTip("Async mode: the adapter polls in the background and reads "
+                                      "come from a live cache — much smoother high-rate streaming")
             self.btn_connect = QtWidgets.QPushButton("Connect")
             self.btn_disconnect = QtWidgets.QPushButton("Disconnect")
             self.btn_disconnect.setEnabled(False)
             self.conn_status = QtWidgets.QLabel("Not connected.")
             for w in (QtWidgets.QLabel("Port:"), self.port_combo, self.btn_refresh, self.btn_wifi,
-                      QtWidgets.QLabel("Baud:"), self.baud_combo,
+                      QtWidgets.QLabel("Baud:"), self.baud_combo, self.chk_async,
                       self.btn_connect, self.btn_disconnect):
                 cb.addWidget(w)
             cb.addWidget(self.conn_status, 1)
@@ -1145,7 +1148,8 @@ if _HAVE_QT:
             self.conn_status.setText("Connecting…")
             QtWidgets.QApplication.processEvents()
             try:
-                self.conn = live.connect(port=port, baud=self._baud())
+                self.conn = live.connect(port=port, baud=self._baud(),
+                                         prefer_async=self.chk_async.isChecked())
             except Exception as exc:  # noqa: BLE001
                 self.conn = None
                 self.conn_status.setText(f"<span style='color:#E53E3E'>Failed: {exc}</span>")
@@ -1169,9 +1173,10 @@ if _HAVE_QT:
             self.pid_search.clear()
             self._filter_pids("")
             self._update_pid_count()
+            mode = " · ⚡ smooth" if getattr(self.conn, "is_async", False) else ""
             self.conn_status.setText(
                 f"<span style='color:#38A169'>Connected</span> — {self.conn.protocol()} "
-                f"({len(supported)} PIDs)"
+                f"({len(supported)} PIDs){mode}"
             )
             self._set_connected(True)
 
@@ -1409,6 +1414,8 @@ if _HAVE_QT:
                 self._livedata.stop_poll()
                 self._livedata.status.setText("Streaming from the active recording…")
             channels = self._selected_channels()
+            if getattr(self.conn, "is_async", False):
+                self.conn.rewatch([ch.command_name for ch in channels if ch.command_name])
             self.plot.clear()
             for ch in channels:
                 self.plot.add_channel(ch.name, [], [], ch.unit)
@@ -1457,6 +1464,8 @@ if _HAVE_QT:
                 QtWidgets.QMessageBox.information(
                     self, "Live Data", "Select at least one PID to stream.")
                 return
+            if getattr(self.conn, "is_async", False):
+                self.conn.rewatch([ch.command_name for ch in channels if ch.command_name])
             self._livedata = LiveDataWindow(channels, self)
             # Free-run its own poller only when not recording (shared connection).
             if self.logger is None or not self.btn_stop.isEnabled():
