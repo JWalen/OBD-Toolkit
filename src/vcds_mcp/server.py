@@ -42,7 +42,8 @@ logging.basicConfig(
 )
 log = logging.getLogger("vcds_mcp")
 
-DEFAULT_LOGS_DIR = r"C:\Ross-Tech\VCDS\Logs"
+DEFAULT_LOGS_DIR = os.environ.get(
+    "VCDS_LOGS_DIR", os.path.join(os.path.expanduser("~"), "Documents", "OBD Toolkit", "Logs"))
 
 
 def logs_dir() -> str:

@@ -85,6 +85,14 @@ def test_ai_export_chat(qapp, tmp_path, monkeypatch):
     win.close()
 
 
+def test_logs_dir_is_not_rosstech(monkeypatch):
+    monkeypatch.delenv("VCDS_LOGS_DIR", raising=False)
+    d = gui_app._default_logs_dir()
+    assert "Ross-Tech" not in d and "OBD Toolkit" in d
+    monkeypatch.setenv("VCDS_LOGS_DIR", "X:/custom-logs")
+    assert gui_app._default_logs_dir() == "X:/custom-logs"
+
+
 def test_markdown_rendering():
     h = gui_app._md_to_html("# Title\n\n- one\n- two\n\n**bold** and `code`")
     assert "<b>Title</b>" in h

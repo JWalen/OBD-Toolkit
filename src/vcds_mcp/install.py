@@ -19,7 +19,8 @@ import sys
 from typing import List, Optional, Tuple
 
 DEFAULT_NAME = "vcds"
-DEFAULT_LOGS_DIR = r"C:\Ross-Tech\VCDS\Logs"
+DEFAULT_LOGS_DIR = os.environ.get(
+    "VCDS_LOGS_DIR", os.path.join(os.path.expanduser("~"), "Documents", "OBD Toolkit", "Logs"))
 
 
 def server_launch() -> Tuple[str, List[str]]:

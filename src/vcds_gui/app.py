@@ -49,7 +49,54 @@ except Exception as exc:  # noqa: BLE001
     _IMPORT_ERR = exc
 
 
-DEFAULT_LOGS_DIR = os.environ.get("VCDS_LOGS_DIR", r"C:\Ross-Tech\VCDS\Logs")
+def _default_logs_dir() -> str:
+    """The app's own data folder (live logs, garage, chat) — cross-platform."""
+    env = os.environ.get("VCDS_LOGS_DIR")
+    if env:
+        return env
+    return os.path.join(os.path.expanduser("~"), "Documents", "OBD Toolkit", "Logs")
+
+
+DEFAULT_LOGS_DIR = _default_logs_dir()
+# Where Ross-Tech VCDS writes its measuring CSVs / Auto-Scans (Windows only).
+LEGACY_LOGS_DIR = r"C:\Ross-Tech\VCDS\Logs"
+
+
+def _vcds_import_dir() -> str:
+    """Default folder for *opening* VCDS files (its log folder if present)."""
+    return LEGACY_LOGS_DIR if os.path.isdir(LEGACY_LOGS_DIR) else DEFAULT_LOGS_DIR
+
+
+def _open_folder(path: str) -> None:
+    """Open a folder in the OS file manager (Windows/macOS/Linux)."""
+    try:
+        os.makedirs(path, exist_ok=True)
+        if sys.platform.startswith("win"):
+            os.startfile(path)  # type: ignore[attr-defined]  # noqa: S606
+        elif sys.platform == "darwin":
+            import subprocess
+            subprocess.Popen(["open", path])
+        else:
+            import subprocess
+            subprocess.Popen(["xdg-open", path])
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _migrate_legacy_data() -> None:
+    """One-time copy of garage/enhanced data out of the old Ross-Tech folder."""
+    try:
+        os.makedirs(DEFAULT_LOGS_DIR, exist_ok=True)
+        if os.path.normcase(DEFAULT_LOGS_DIR) == os.path.normcase(LEGACY_LOGS_DIR):
+            return
+        import shutil
+        for name in ("garage.json", "enhanced_pids.json"):
+            src = os.path.join(LEGACY_LOGS_DIR, name)
+            dst = os.path.join(DEFAULT_LOGS_DIR, name)
+            if os.path.isfile(src) and not os.path.exists(dst):
+                shutil.copy2(src, dst)
+    except Exception:  # noqa: BLE001
+        pass
 
 # Distinct trace colours cycled across channels.
 _PALETTE = [
@@ -418,7 +465,7 @@ if _HAVE_QT:
         # -- loading -------------------------------------------------------- #
         def open_csv_dialog(self):
             path, _ = QtWidgets.QFileDialog.getOpenFileName(
-                self, "Open VCDS Measuring CSV", DEFAULT_LOGS_DIR, "CSV files (*.csv *.CSV);;All files (*)"
+                self, "Open VCDS Measuring CSV", _vcds_import_dir(), "CSV files (*.csv *.CSV);;All files (*)"
             )
             if path:
                 self.load_csv(path)
@@ -460,7 +507,7 @@ if _HAVE_QT:
 
         def open_scan_dialog(self):
             path, _ = QtWidgets.QFileDialog.getOpenFileName(
-                self, "Open VCDS Auto-Scan", DEFAULT_LOGS_DIR, "Text files (*.txt *.TXT);;All files (*)"
+                self, "Open VCDS Auto-Scan", _vcds_import_dir(), "Text files (*.txt *.TXT);;All files (*)"
             )
             if path:
                 self.load_scan(path)
@@ -2723,6 +2770,7 @@ if _HAVE_QT:
             super().__init__()
             from vcds_core import __version__ as _ver
 
+            _migrate_legacy_data()
             self._version = _ver
             self.setWindowTitle(f"OBD Toolkit v{_ver}")
             icon = _find_app_icon()
@@ -2812,6 +2860,10 @@ if _HAVE_QT:
             resets_action = QtGui.QAction("&Resets / Service…", self)
             resets_action.triggered.connect(self.show_resets)
             tools_menu.addAction(resets_action)
+            tools_menu.addSeparator()
+            logs_action = QtGui.QAction("Open &logs folder", self)
+            logs_action.triggered.connect(lambda: _open_folder(DEFAULT_LOGS_DIR))
+            tools_menu.addAction(logs_action)
 
             help_menu = self.menuBar().addMenu("&Help")
             tour = QtGui.QAction("&Quick Tour", self)
