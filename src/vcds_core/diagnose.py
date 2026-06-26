@@ -141,26 +141,64 @@ def _timing_findings(scan: Optional[AutoScan], log: Optional[MeasuringLog]) -> L
              "Failed VVT actuator/phaser or solenoid", "Cam/crank position sensor or reluctor ring"],
             evidence=", ".join(sorted(found)), code=sorted(found)[0]))
 
-    # Measuring-log: a large camshaft-timing *deviation* points the same way.
+    # Measuring-log: a large camshaft-timing deviation points the same way.
+    # Two ways VCDS/OBD logs expose it: an explicit deviation channel, OR a
+    # specified-vs-actual camshaft-timing pair (how VAG 2.0 TSI/FSI and 3.0T show
+    # chain stretch — the actual angle can't follow the specified).
     if log is not None:
+        cam_dev = None  # (degrees, source-label, unit-suffix)
+
         for ch in log.channels:
             n = ch.name.lower()
+            if "cam" in n and any(k in n for k in ("deviation", "timing error", "correlation",
+                                                   "angle error", "offset")):
+                d = max(abs(ch.max or 0.0), abs(ch.min or 0.0))
+                if cam_dev is None or d > cam_dev[0]:
+                    cam_dev = (d, ch.name, _u(ch))
+
+        cam_spec = cam_act = None
+        for c in log.channels:
+            n = c.name.lower()
             if "cam" not in n:
                 continue
-            if not any(k in n for k in ("deviation", "timing error", "correlation",
-                                        "timing dev", "angle error", "offset")):
-                continue
-            dev = max(abs(ch.max or 0.0), abs(ch.min or 0.0))
-            if dev >= 6.0:
-                out.append(Finding(
-                    "high", "Camshaft timing deviation high",
-                    f"{ch.name} reached {dev:.1f}{_u(ch)} — a large cam-timing deviation can indicate "
-                    "a stretched timing chain or jumped belt. Also check the VVT actuator and that "
-                    "oil supply/pressure to the cam phaser is good.", "data",
-                    ["Stretched timing chain / belt", "VVT actuator / phaser",
-                     "Low oil pressure to the cam phaser"],
-                    evidence=f"{ch.name} {dev:.1f}{_u(ch)}"))
+            if cam_spec is None and any(k in n for k in ("spec", "target", "nominal",
+                                                         "setpoint", "desired")):
+                cam_spec = c
+            if cam_act is None and any(k in n for k in ("actual", "act.", "real", "measured")):
+                cam_act = c
+        if cam_spec is not None and cam_act is not None:
+            worst = _max_abs_diff(log, cam_spec.name, cam_act.name)
+            if worst is not None and (cam_dev is None or worst > cam_dev[0]):
+                cam_dev = (worst, f"{cam_act.name} vs {cam_spec.name}", _u(cam_act))
+
+        if cam_dev is not None and cam_dev[0] >= 6.0:
+            out.append(Finding(
+                "high", "Camshaft timing deviation high",
+                f"Camshaft timing deviation up to {cam_dev[0]:.1f}{cam_dev[2]} ({cam_dev[1]}). "
+                "A large cam-timing deviation points to a stretched timing chain or a worn/weak "
+                "chain tensioner (on VAG 2.0 TSI/FSI and the 3.0T this is the classic stretch "
+                "signature) — also check the VVT actuator and oil supply/pressure to the cam "
+                "phaser. Applies to any cam-phased engine.", "data",
+                ["Stretched timing chain + worn guides/tensioner", "Worn / weak chain tensioner",
+                 "VVT actuator / cam adjuster", "Low oil pressure to the cam phaser"],
+                evidence=f"{cam_dev[1]}: up to {cam_dev[0]:.1f}{cam_dev[2]}"))
     return out
+
+
+def _max_abs_diff(log: MeasuringLog, a_name: str, b_name: str):
+    """Largest |a-b| across time-aligned samples of two channels (or None)."""
+    a = log.raw_series.get(a_name)
+    b = log.raw_series.get(b_name)
+    if not a or not b:
+        return None
+    n = min(len(a["value"]), len(b["value"]))
+    worst = 0.0
+    for i in range(n):
+        av, bv = a["value"][i], b["value"][i]
+        if av is None or bv is None:
+            continue
+        worst = max(worst, abs(av - bv))
+    return worst
 
 
 def _chan_max(log: MeasuringLog, *substrings):
@@ -241,9 +279,13 @@ def _data_findings(log: MeasuringLog, profile: Profile) -> List[Finding]:
 
 
 def _divergence_finding(log: MeasuringLog, issues: dict) -> Optional[Finding]:
+    # Boost/charge-pressure target-vs-actual. Camshaft spec/actual pairs are
+    # handled by the dedicated timing check, so skip "cam" channels here.
     spec = actual = None
     for c in log.channels:
         n = c.name.lower()
+        if "cam" in n:
+            continue
         if spec is None and any(k in n for k in ("specified", "requested", "target", "desired")):
             spec = c
         if actual is None and "actual" in n:

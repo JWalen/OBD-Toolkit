@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.21.0] - 2026-06-26
+
+### Changed
+- **Timing-stretch check now reads VAG's specified-vs-actual camshaft logging.**
+  In addition to a dedicated deviation channel, it pairs a *specified* and
+  *actual* camshaft-timing channel and flags a large divergence — the way chain
+  stretch shows up when logging a **2.0 TSI / 2.0 FSI / 3.0T** (and any cam-phased
+  engine). The generic boost target-vs-actual check no longer mis-labels cam
+  channels.
+
 ## [1.20.0] - 2026-06-26
 
 ### Added
@@ -582,7 +592,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.20.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.21.0...HEAD
+[1.21.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.21.0
 [1.20.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.20.0
 [1.19.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.19.0
 [1.18.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.18.0

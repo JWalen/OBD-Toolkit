@@ -50,3 +50,20 @@ def test_camshaft_deviation_log_heuristic(tmp_path):
     log = parse.parse_measuring_log(str(path))
     report = diagnose(log=log, profile="generic")
     assert any(f.title == "Camshaft timing deviation high" for f in report.findings)
+
+
+def test_camshaft_spec_actual_pair(tmp_path):
+    # VAG-style logging: specified vs actual camshaft timing diverge (chain stretch)
+    path = tmp_path / "campair.csv"
+    rows = ["TIME,Camshaft Timing Specified Bank 1,Camshaft Timing Actual Bank 1", "s,°,°"]
+    for k in range(6):
+        rows.append(f"{k * 0.5:.1f},10.0,{10.0 - k * 1.6:.1f}")  # diverges to 8.0 deg
+    path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    log = parse.parse_measuring_log(str(path))
+    report = diagnose(log=log, profile="vag")
+    titles = [f.title for f in report.findings]
+    assert "Camshaft timing deviation high" in titles
+    # and it must NOT be mislabeled as a boost shortfall
+    assert "Actual value falls short of target" not in titles
+    f = next(f for f in report.findings if f.title == "Camshaft timing deviation high")
+    assert any("tensioner" in c.lower() for c in f.causes)
