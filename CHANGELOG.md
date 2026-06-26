@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-06-25
+
+### Added
+- **Carbon dashboard redesign.** A motorsport-styled dark theme is now the
+  default, with a **left sidebar** (Dashboard · Files · Live · AI · Garage) and a
+  **Dashboard home** offering quick Connect / Open-log actions, the active
+  vehicle, and recent logs. The flow now starts from one clear place. (A light
+  theme is still available via View → Dark mode.)
+- **macOS support.** CI now also builds an `OBD Toolkit.app` packaged as a
+  **`.dmg`**, and the in-app updater downloads the right file per OS. On macOS the
+  app covers live OBD-II + file analysis (VCDS itself remains Windows-only).
+- **Dedicated logs folder.** The app's own logs, garage and chat now live in
+  **`~/Documents/OBD Toolkit/Logs`** instead of the Ross-Tech folder (existing
+  `garage.json` is migrated over). Open dialogs still default to the Ross-Tech
+  folder for importing VCDS files. New **Tools → Open logs folder**.
+
 ## [1.4.2] - 2026-06-25
 
 ### Fixed
@@ -408,7 +424,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.4.2...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.5.0
 [1.4.2]: https://github.com/JWalen/VAGScanner/releases/tag/v1.4.2
 [1.4.1]: https://github.com/JWalen/VAGScanner/releases/tag/v1.4.1
 [1.4.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.4.0

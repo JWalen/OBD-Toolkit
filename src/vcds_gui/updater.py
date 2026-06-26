@@ -109,9 +109,10 @@ def fetch_latest(repo: str = REPO, opener: Opener = _urlopen, timeout: float = 1
         data = json.loads(resp.read().decode("utf-8"))
 
     tag = data.get("tag_name") or ""
+    ext = ".dmg" if sys.platform == "darwin" else ".exe"
     installer = None
     for asset in data.get("assets") or []:
-        if str(asset.get("name", "")).lower().endswith(".exe"):
+        if str(asset.get("name", "")).lower().endswith(ext):
             installer = asset
             break
 
@@ -213,6 +214,10 @@ def launch_installer(path: str, silent: bool = False, relaunch: Optional[str] = 
     """
     import subprocess
 
+    if sys.platform == "darwin":
+        # Open the .dmg in Finder; the user drags the app to Applications.
+        subprocess.Popen(["open", path])
+        return
     if not sys.platform.startswith("win"):
         subprocess.Popen([path])
         return

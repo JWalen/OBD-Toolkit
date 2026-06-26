@@ -60,6 +60,21 @@ def _opener_for(payload: dict):
     return opener
 
 
+def test_fetch_latest_picks_platform_installer():
+    import sys
+
+    payload = {
+        "tag_name": "v2.0.0", "name": "v2.0.0", "body": "", "html_url": "x",
+        "assets": [
+            {"name": "OBD-Toolkit-2.0.0.dmg", "browser_download_url": "x", "size": 1},
+            {"name": "VCDS-Toolkit-Setup-2.0.0.exe", "browser_download_url": "y", "size": 2},
+        ],
+    }
+    info = updater.fetch_latest(opener=_opener_for(payload))
+    expected = ".dmg" if sys.platform == "darwin" else ".exe"
+    assert info.installer_name.endswith(expected)
+
+
 # --------------------------------------------------------------------------- #
 # Version comparison
 # --------------------------------------------------------------------------- #

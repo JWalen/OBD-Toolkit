@@ -108,35 +108,99 @@ _PALETTE = [
 if _HAVE_QT:
     pg.setConfigOptions(antialias=True, background="w", foreground="k")
 
+    # Carbon "motorsport" palette — the default look.
+    CARBON = {
+        "bg": "#15171C", "base": "#0F1115", "surface": "#1E2228", "line": "#262A31",
+        "text": "#E8EAED", "muted": "#A8AEB8", "accent": "#FF6A00", "accent2": "#FF7E26",
+        "red": "#E10600",
+    }
+
+    _CARBON_QSS = """
+    QWidget {{ background:{bg}; color:{text}; }}
+    QMainWindow, QDialog {{ background:{bg}; }}
+    QFrame#Sidebar {{ background:{base}; border-right:1px solid {line}; }}
+    QLabel#Brand {{ color:{accent}; font-size:13pt; font-weight:bold; }}
+    QToolButton#Nav {{ color:{muted}; border:none; padding:10px 12px; text-align:left;
+        border-radius:8px; font-size:10.5pt; }}
+    QToolButton#Nav:hover {{ background:{surface}; color:{text}; }}
+    QToolButton#Nav:checked {{ background:{surface}; color:{accent};
+        border-left:3px solid {accent}; }}
+    QFrame#Card {{ background:{surface}; border:1px solid {line}; border-radius:12px; }}
+    QLabel#H1 {{ font-size:18pt; font-weight:bold; color:{text}; }}
+    QLabel#Muted {{ color:{muted}; }}
+    QPushButton {{ background:{surface}; color:{text}; border:1px solid {line};
+        border-radius:8px; padding:7px 14px; }}
+    QPushButton:hover {{ background:#2E333B; }}
+    QPushButton:disabled {{ color:#5A616B; background:#1A1D23; border-color:#22262E; }}
+    QPushButton#Accent {{ background:{accent}; color:#15171C; border:none; font-weight:bold; }}
+    QPushButton#Accent:hover {{ background:{accent2}; }}
+    QTabWidget::pane {{ border:1px solid {line}; }}
+    QTabBar::tab {{ background:#1A1D23; color:{muted}; padding:7px 14px; border:1px solid {line};
+        border-bottom:none; }}
+    QTabBar::tab:selected {{ background:{surface}; color:{accent}; }}
+    QLineEdit, QPlainTextEdit, QTextEdit, QComboBox, QSpinBox, QDoubleSpinBox,
+    QListWidget, QTableWidget, QTreeWidget, QTextBrowser {{
+        background:{base}; color:{text}; border:1px solid #2A2F37; border-radius:6px;
+        selection-background-color:{accent}; selection-color:#15171C; }}
+    QHeaderView::section {{ background:#1A1D23; color:{muted}; border:none; padding:4px; }}
+    QMenuBar {{ background:{base}; color:{text}; }}
+    QMenuBar::item:selected {{ background:{surface}; }}
+    QMenu {{ background:#1A1D23; color:{text}; border:1px solid #2A2F37; }}
+    QMenu::item:selected {{ background:{accent}; color:#15171C; }}
+    QStatusBar {{ background:{base}; color:{muted}; }}
+    QToolTip {{ color:{text}; background:{surface}; border:1px solid {line}; }}
+    QScrollBar:vertical {{ background:{bg}; width:12px; margin:0; }}
+    QScrollBar::handle:vertical {{ background:#2E333B; border-radius:6px; min-height:24px; }}
+    QScrollBar::add-line, QScrollBar::sub-line {{ height:0; }}
+    QCheckBox, QRadioButton {{ color:{text}; }}
+    QGroupBox {{ border:1px solid {line}; border-radius:8px; margin-top:8px; }}
+    QGroupBox::title {{ subcontrol-origin:margin; left:10px; color:{muted}; }}
+    """
+
+    _LIGHT_QSS = """
+    QFrame#Sidebar { background:#EEF1F5; border-right:1px solid #DBE0E6; }
+    QLabel#Brand { color:#0066CC; font-size:13pt; font-weight:bold; }
+    QToolButton#Nav { color:#4A5568; border:none; padding:10px 12px; text-align:left;
+        border-radius:8px; font-size:10.5pt; }
+    QToolButton#Nav:hover { background:#E2E8F0; }
+    QToolButton#Nav:checked { background:#FFFFFF; color:#0066CC; border-left:3px solid #0066CC; }
+    QFrame#Card { background:#FFFFFF; border:1px solid #E2E8F0; border-radius:12px; }
+    QLabel#H1 { font-size:18pt; font-weight:bold; color:#1A202C; }
+    QLabel#Muted { color:#718096; }
+    QPushButton#Accent { background:#0066CC; color:#FFFFFF; border:none; font-weight:bold;
+        border-radius:8px; padding:7px 14px; }
+    QPushButton#Accent:hover { background:#0a72db; }
+    """
+
     def apply_theme(dark: bool):
-        """Apply a light or dark Fusion palette to the whole application."""
+        """Apply the carbon (dark) or light theme to the whole application."""
         app = QtWidgets.QApplication.instance()
         if app is None:
             return
         app.setStyle("Fusion")
         if not dark:
             app.setPalette(app.style().standardPalette())
-            app.setStyleSheet("")
+            app.setStyleSheet(_LIGHT_QSS)
             return
         c = QtGui.QColor
         p = QtGui.QPalette()
-        p.setColor(QtGui.QPalette.Window, c("#1a1a2e"))
-        p.setColor(QtGui.QPalette.WindowText, c("#e6edf6"))
-        p.setColor(QtGui.QPalette.Base, c("#15151f"))
-        p.setColor(QtGui.QPalette.AlternateBase, c("#1f1f33"))
-        p.setColor(QtGui.QPalette.Text, c("#e6edf6"))
-        p.setColor(QtGui.QPalette.Button, c("#22223a"))
-        p.setColor(QtGui.QPalette.ButtonText, c("#e6edf6"))
-        p.setColor(QtGui.QPalette.Highlight, c("#0066CC"))
-        p.setColor(QtGui.QPalette.HighlightedText, c("#ffffff"))
-        p.setColor(QtGui.QPalette.ToolTipBase, c("#22223a"))
-        p.setColor(QtGui.QPalette.ToolTipText, c("#e6edf6"))
-        p.setColor(QtGui.QPalette.PlaceholderText, c("#8a93a6"))
-        p.setColor(QtGui.QPalette.Link, c("#4aa3ff"))
+        p.setColor(QtGui.QPalette.Window, c(CARBON["bg"]))
+        p.setColor(QtGui.QPalette.WindowText, c(CARBON["text"]))
+        p.setColor(QtGui.QPalette.Base, c(CARBON["base"]))
+        p.setColor(QtGui.QPalette.AlternateBase, c(CARBON["surface"]))
+        p.setColor(QtGui.QPalette.Text, c(CARBON["text"]))
+        p.setColor(QtGui.QPalette.Button, c(CARBON["surface"]))
+        p.setColor(QtGui.QPalette.ButtonText, c(CARBON["text"]))
+        p.setColor(QtGui.QPalette.Highlight, c(CARBON["accent"]))
+        p.setColor(QtGui.QPalette.HighlightedText, c(CARBON["bg"]))
+        p.setColor(QtGui.QPalette.ToolTipBase, c(CARBON["surface"]))
+        p.setColor(QtGui.QPalette.ToolTipText, c(CARBON["text"]))
+        p.setColor(QtGui.QPalette.PlaceholderText, c(CARBON["muted"]))
+        p.setColor(QtGui.QPalette.Link, c(CARBON["accent2"]))
         for role in (QtGui.QPalette.WindowText, QtGui.QPalette.Text, QtGui.QPalette.ButtonText):
-            p.setColor(QtGui.QPalette.Disabled, role, c("#6b7280"))
+            p.setColor(QtGui.QPalette.Disabled, role, c("#5A616B"))
         app.setPalette(p)
-        app.setStyleSheet("QToolTip { color:#e6edf6; background:#22223a; border:1px solid #444; }")
+        app.setStyleSheet(_CARBON_QSS.format(**CARBON))
 
     # --------------------------------------------------------------------- #
     # Shared plotting widget
@@ -2765,6 +2829,132 @@ if _HAVE_QT:
     # --------------------------------------------------------------------- #
     # Main window
     # --------------------------------------------------------------------- #
+    class DashboardPage(QtWidgets.QWidget):
+        """Landing page: quick actions, vehicle status and recent logs."""
+
+        def __init__(self, main_window, parent=None):
+            super().__init__(parent)
+            self.main = main_window
+            outer = QtWidgets.QVBoxLayout(self)
+            outer.setContentsMargins(28, 24, 28, 24)
+            outer.setSpacing(16)
+
+            title = QtWidgets.QLabel("Dashboard")
+            title.setObjectName("H1")
+            outer.addWidget(title)
+            sub = QtWidgets.QLabel("Connect to your car or open a log to get started.")
+            sub.setObjectName("Muted")
+            outer.addWidget(sub)
+
+            row = QtWidgets.QHBoxLayout()
+            row.setSpacing(14)
+            row.addWidget(self._action_card(
+                "🔌  Connect", "Live OBD-II over an ELM327 adapter", "Connect", self._connect, True))
+            row.addWidget(self._action_card(
+                "📂  Open log", "VCDS / Torque / OBD Fusion CSV", "Open…", self._open_csv, False))
+            row.addWidget(self._action_card(
+                "📋  Auto-Scan", "Open a VCDS Auto-Scan .TXT", "Open…", self._open_scan, False))
+            outer.addLayout(row)
+
+            low = QtWidgets.QHBoxLayout()
+            low.setSpacing(14)
+            self.veh_card, vbody = self._panel("Active vehicle")
+            self.veh_body = QtWidgets.QLabel("—")
+            self.veh_body.setWordWrap(True)
+            vbody.addWidget(self.veh_body)
+            vbody.addStretch(1)
+            low.addWidget(self.veh_card, 1)
+
+            rc, rbody = self._panel("Recent logs")
+            self.recent_list = QtWidgets.QListWidget()
+            self.recent_list.itemActivated.connect(self._open_recent)
+            self.recent_list.itemDoubleClicked.connect(self._open_recent)
+            rbody.addWidget(self.recent_list)
+            low.addWidget(rc, 1)
+            outer.addLayout(low, 1)
+
+        def _action_card(self, title, subtitle, btn_text, slot, accent):
+            card = QtWidgets.QFrame()
+            card.setObjectName("Card")
+            card.setMinimumHeight(150)
+            v = QtWidgets.QVBoxLayout(card)
+            v.setContentsMargins(18, 16, 18, 16)
+            t = QtWidgets.QLabel(title)
+            t.setStyleSheet("font-size:13pt; font-weight:bold;")
+            s = QtWidgets.QLabel(subtitle)
+            s.setObjectName("Muted")
+            s.setWordWrap(True)
+            btn = QtWidgets.QPushButton(btn_text)
+            if accent:
+                btn.setObjectName("Accent")
+            btn.clicked.connect(slot)
+            v.addWidget(t)
+            v.addWidget(s)
+            v.addStretch(1)
+            v.addWidget(btn, 0, QtCore.Qt.AlignLeft)
+            return card
+
+        def _panel(self, heading):
+            card = QtWidgets.QFrame()
+            card.setObjectName("Card")
+            v = QtWidgets.QVBoxLayout(card)
+            v.setContentsMargins(18, 14, 18, 14)
+            h = QtWidgets.QLabel(heading)
+            h.setStyleSheet("font-weight:bold;")
+            v.addWidget(h)
+            return card, v
+
+        # -- actions -------------------------------------------------------- #
+        def _connect(self):
+            self.main.show_page("live")
+            self.main.live_tab.connect_adapter()
+
+        def _open_csv(self):
+            self.main.show_page("files")
+            self.main.analyzer.open_csv_dialog()
+
+        def _open_scan(self):
+            self.main.show_page("files")
+            self.main.analyzer.open_scan_dialog()
+
+        def _open_recent(self, item):
+            path = item.data(QtCore.Qt.UserRole)
+            if not path:
+                return
+            self.main.show_page("files")
+            if path.lower().endswith((".txt",)):
+                self.main.analyzer.load_scan(path)
+            else:
+                self.main.analyzer.load_csv(path)
+
+        def refresh(self):
+            # active vehicle
+            vin = self.main.settings.value("garage/active_vin", "", type=str)
+            if vin:
+                veh = garage_mod.find(
+                    garage_mod.load_garage(os.path.join(DEFAULT_LOGS_DIR, "garage.json")), vin)
+                self.veh_body.setText(
+                    f"{veh.label}\nVIN {veh.vin}" if veh else f"VIN {vin}")
+            else:
+                self.veh_body.setText("No active vehicle.\nRead Vehicle Info or open the Garage.")
+            # recent logs
+            self.recent_list.clear()
+            try:
+                base = DEFAULT_LOGS_DIR
+                files = [(os.path.getmtime(os.path.join(base, n)), n)
+                         for n in os.listdir(base)
+                         if n.lower().endswith((".csv", ".txt"))
+                         and os.path.isfile(os.path.join(base, n))]
+                files.sort(reverse=True)
+            except OSError:
+                files = []
+            if not files:
+                self.recent_list.addItem("No logs yet.")
+            for _mt, name in files[:12]:
+                it = QtWidgets.QListWidgetItem(name)
+                it.setData(QtCore.Qt.UserRole, os.path.join(DEFAULT_LOGS_DIR, name))
+                self.recent_list.addItem(it)
+
     class MainWindow(QtWidgets.QMainWindow):
         def __init__(self):
             super().__init__()
@@ -2780,7 +2970,49 @@ if _HAVE_QT:
             self._update_info = None
 
             central = QtWidgets.QWidget()
-            cv = QtWidgets.QVBoxLayout(central)
+            h = QtWidgets.QHBoxLayout(central)
+            h.setContentsMargins(0, 0, 0, 0)
+            h.setSpacing(0)
+            self.setCentralWidget(central)
+
+            # --- left navigation rail --------------------------------------- #
+            self.sidebar = QtWidgets.QFrame()
+            self.sidebar.setObjectName("Sidebar")
+            self.sidebar.setFixedWidth(186)
+            sv = QtWidgets.QVBoxLayout(self.sidebar)
+            sv.setContentsMargins(12, 16, 12, 16)
+            sv.setSpacing(4)
+            brand = QtWidgets.QLabel("⛽ OBD Toolkit")
+            brand.setObjectName("Brand")
+            sv.addWidget(brand)
+            sv.addSpacing(10)
+            self._nav = {}
+            for key, label in (("dashboard", "▦  Dashboard"), ("files", "📈  Files"),
+                               ("live", "⏱  Live"), ("ai", "🤖  AI Assistant")):
+                b = QtWidgets.QToolButton()
+                b.setObjectName("Nav")
+                b.setText(label)
+                b.setCheckable(True)
+                b.setToolButtonStyle(QtCore.Qt.ToolButtonTextOnly)
+                b.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+                b.setMinimumHeight(40)
+                b.clicked.connect(lambda _c=False, k=key: self.show_page(k))
+                sv.addWidget(b)
+                self._nav[key] = b
+            sv.addStretch(1)
+            garage_btn = QtWidgets.QToolButton()
+            garage_btn.setObjectName("Nav")
+            garage_btn.setText("🚗  Garage")
+            garage_btn.setToolButtonStyle(QtCore.Qt.ToolButtonTextOnly)
+            garage_btn.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+            garage_btn.setMinimumHeight(40)
+            garage_btn.clicked.connect(self.show_garage)
+            sv.addWidget(garage_btn)
+            h.addWidget(self.sidebar)
+
+            # --- main content area (banner + stacked pages) ----------------- #
+            right = QtWidgets.QWidget()
+            cv = QtWidgets.QVBoxLayout(right)
             cv.setContentsMargins(0, 0, 0, 0)
             cv.setSpacing(0)
             self.update_banner = UpdateBanner()
@@ -2789,22 +3021,24 @@ if _HAVE_QT:
             self.update_banner.notes.connect(self._open_release_notes)
             self.update_banner.dismiss.connect(self.update_banner.hide)
             cv.addWidget(self.update_banner)
-            self.tabs = QtWidgets.QTabWidget()
-            cv.addWidget(self.tabs, 1)
-            self.setCentralWidget(central)
+            self.stack = QtWidgets.QStackedWidget()
+            cv.addWidget(self.stack, 1)
+            h.addWidget(right, 1)
 
+            self.settings = QtCore.QSettings("DeltaModTech", "VCDS Toolkit")
+            self.dashboard = DashboardPage(self)
             self.analyzer = FileAnalyzerTab()
             self.live_tab = LiveTab(self)
             self.ai_tab = AiAssistantTab(self)
-            self.tabs.addTab(self.analyzer, "File Analyzer")
-            self.tabs.addTab(self.live_tab, "Live (OBD-II)")
-            self.tabs.addTab(self.ai_tab, "AI Assistant")
-            self.tabs.currentChanged.connect(
-                lambda *_: self.tabs.currentWidget() is self.ai_tab and self.ai_tab.refresh_vehicle())
+            self._page_index = {}
+            for key, widget in (("dashboard", self.dashboard), ("files", self.analyzer),
+                                ("live", self.live_tab), ("ai", self.ai_tab)):
+                self._page_index[key] = self.stack.addWidget(widget)
 
-            self.settings = QtCore.QSettings("DeltaModTech", "VCDS Toolkit")
             self._build_menu()
-            self._apply_theme(self.settings.value("ui/dark", False, type=bool))
+            self.show_page("dashboard")
+            # carbon (dark) is the default look
+            self._apply_theme(self.settings.value("ui/dark", True, type=bool))
             self._apply_units(self.settings.value("ui/units", units.AS_LOGGED, type=str))
             self.statusBar().showMessage(
                 f"Logs dir: {DEFAULT_LOGS_DIR}   ·   Press F1 for help"
@@ -2818,7 +3052,7 @@ if _HAVE_QT:
             view_menu = self.menuBar().addMenu("&View")
             self.act_dark = QtGui.QAction("&Dark mode", self)
             self.act_dark.setCheckable(True)
-            self.act_dark.setChecked(self.settings.value("ui/dark", False, type=bool))
+            self.act_dark.setChecked(self.settings.value("ui/dark", True, type=bool))
             self.act_dark.toggled.connect(self._toggle_theme)
             view_menu.addAction(self.act_dark)
 
@@ -2906,6 +3140,18 @@ if _HAVE_QT:
         def show_tour(self, force: bool = False):
             show_default = self.settings.value("ui/show_tour", True, type=bool)
             QuickTourDialog(self.settings, show_default, self).exec()
+
+        def show_page(self, key: str):
+            idx = self._page_index.get(key)
+            if idx is None:
+                return
+            self.stack.setCurrentIndex(idx)
+            for k, b in self._nav.items():
+                b.setChecked(k == key)
+            if key == "ai":
+                self.ai_tab.refresh_vehicle()
+            elif key == "dashboard":
+                self.dashboard.refresh()
 
         def _apply_theme(self, dark: bool):
             apply_theme(dark)
@@ -3096,7 +3342,7 @@ if _HAVE_QT:
 
         def open_in_analyzer(self, path: str):
             self.analyzer.load_csv(path)
-            self.tabs.setCurrentWidget(self.analyzer)
+            self.show_page("files")
 
 
 def _fmt_num(x):

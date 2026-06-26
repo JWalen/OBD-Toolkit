@@ -32,7 +32,25 @@ def qapp():
 
 def test_window_constructs(qapp):
     win = gui_app.MainWindow()
-    assert win.tabs.count() == 3  # File Analyzer, Live, AI Assistant
+    assert win.stack.count() == 4  # Dashboard, Files, Live, AI
+    assert set(win._nav) == {"dashboard", "files", "live", "ai"}
+    win.close()
+
+
+def test_navigation_switches_pages(qapp):
+    win = gui_app.MainWindow()
+    win.show_page("live")
+    assert win.stack.currentWidget() is win.live_tab
+    assert win._nav["live"].isChecked() and not win._nav["files"].isChecked()
+    win.show_page("dashboard")
+    assert win.stack.currentWidget() is win.dashboard
+    win.close()
+
+
+def test_dashboard_refresh(qapp):
+    win = gui_app.MainWindow()
+    win.dashboard.refresh()  # should not raise; populates recents/vehicle
+    assert win.dashboard.recent_list.count() >= 1
     win.close()
 
 
