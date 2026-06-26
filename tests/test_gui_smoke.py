@@ -256,6 +256,20 @@ def test_svg_icons_and_nav(qapp):
     win.close()
 
 
+def test_advanced_mode_toggle(qapp):
+    win = gui_app.MainWindow()
+    win._apply_advanced(False)  # basic: advanced controls hidden
+    assert win.analyzer.rule_box.isHidden()
+    assert win.live_tab.trig_box.isHidden() and win.live_tab.chk_async.isHidden()
+    assert not win.act_enhanced.isVisible()
+    win._apply_advanced(True)   # advanced: revealed
+    assert not win.analyzer.rule_box.isHidden()
+    assert not win.live_tab.trig_box.isHidden()
+    assert win.act_enhanced.isVisible()
+    win._apply_advanced(False)
+    win.close()
+
+
 def test_settings_dialog(qapp):
     win = gui_app.MainWindow()
     dlg = gui_app.SettingsDialog(win)

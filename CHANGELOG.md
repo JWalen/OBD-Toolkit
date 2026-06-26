@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.0] - 2026-06-26
+
+### Added
+- **Basic / Advanced mode.** A clean default view for everyday use; an **Advanced
+  mode** toggle (Settings) reveals power-user controls — event-capture threshold
+  rules, ⚡ async streaming, live alerts, Enhanced PIDs and Resets. New installs
+  start in Basic so the app isn't overwhelming.
+
 ## [1.22.0] - 2026-06-26
 
 ### Changed
@@ -609,7 +617,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.22.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.23.0...HEAD
+[1.23.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.23.0
 [1.22.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.22.0
 [1.21.1]: https://github.com/JWalen/VAGScanner/releases/tag/v1.21.1
 [1.21.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.21.0

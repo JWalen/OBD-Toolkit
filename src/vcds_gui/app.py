@@ -575,7 +575,8 @@ if _HAVE_QT:
             ev_bar.addWidget(self.btn_apply_rules)
             lv.addLayout(ev_bar)
 
-            rule_box = QtWidgets.QGroupBox("Add threshold rule")
+            self.rule_box = QtWidgets.QGroupBox("Add threshold rule")
+            rule_box = self.rule_box
             rb = QtWidgets.QHBoxLayout(rule_box)
             self.rule_chan = QtWidgets.QLineEdit()
             self.rule_chan.setPlaceholderText("channel")
@@ -634,6 +635,10 @@ if _HAVE_QT:
             self.btn_add_rule.clicked.connect(self._add_rule)
             self.btn_clear_rules.clicked.connect(self._clear_rules)
             self.event_list.itemClicked.connect(self._event_clicked)
+
+        def set_advanced(self, on: bool):
+            self.rule_box.setVisible(on)
+            self.rules_label.setVisible(on)
 
         # -- graph / data view ---------------------------------------------- #
         def _set_view(self, idx):
@@ -1178,7 +1183,8 @@ if _HAVE_QT:
 
             left_split.addWidget(pid_box)
 
-            trig_box = QtWidgets.QGroupBox("Event-capture trigger")
+            self.trig_box = QtWidgets.QGroupBox("Event-capture trigger")
+            trig_box = self.trig_box
             tv = QtWidgets.QVBoxLayout(trig_box)
             self.chk_dtc = QtWidgets.QCheckBox("Trigger on any new DTC")
             tv.addWidget(self.chk_dtc)
@@ -1624,6 +1630,11 @@ if _HAVE_QT:
                 if it.checkState() == QtCore.Qt.Checked:
                     wanted.add(it.data(QtCore.Qt.UserRole))
             return [c for c in self.channels if c.name in wanted] or self.channels
+
+        def set_advanced(self, on: bool):
+            self.trig_box.setVisible(on)        # event-capture threshold rules
+            self.chk_async.setVisible(on)       # ⚡ async (smooth) mode
+            self.chk_alert.setVisible(on)       # alerts depend on threshold rules
 
         def _session_dir(self) -> str:
             """Live logs go into a per-vehicle subfolder named from the VIN."""
@@ -2789,6 +2800,13 @@ if _HAVE_QT:
             self.chk_dark.setChecked(self.settings.value("ui/dark", True, type=bool))
             form.addRow("Appearance:", self.chk_dark)
 
+            self.chk_advanced = QtWidgets.QCheckBox("Advanced mode (event triggers, async, "
+                                                    "enhanced PIDs, resets)")
+            self.chk_advanced.setChecked(self.settings.value("ui/advanced", False, type=bool))
+            self.chk_advanced.setToolTip("Off keeps a clean basic view; on reveals power-user "
+                                         "controls.")
+            form.addRow("Mode:", self.chk_advanced)
+
             self.units_combo = QtWidgets.QComboBox()
             for uid, label in ((units.AS_LOGGED, "As logged"), (units.METRIC, "Metric"),
                                (units.IMPERIAL, "Imperial")):
@@ -2841,6 +2859,8 @@ if _HAVE_QT:
             self.main._set_profile(self.prof_combo.currentData())
             self.settings.setValue("ui/check_updates", self.chk_update.isChecked())
             self.main.act_update_startup.setChecked(self.chk_update.isChecked())
+            self.settings.setValue("ui/advanced", self.chk_advanced.isChecked())
+            self.main._apply_advanced(self.chk_advanced.isChecked())
             self.accept()
 
     class AiSettingsDialog(QtWidgets.QDialog):
@@ -3998,6 +4018,7 @@ if _HAVE_QT:
 
             self._build_menu()
             self.show_page("dashboard")
+            self._apply_advanced(self.settings.value("ui/advanced", False, type=bool))
             # carbon (dark) is the default look
             self._apply_theme(self.settings.value("ui/dark", True, type=bool))
             self._apply_units(self.settings.value("ui/units", units.AS_LOGGED, type=str))
@@ -4053,6 +4074,7 @@ if _HAVE_QT:
             enh_action = QtGui.QAction("&Enhanced PIDs (experimental)…", self)
             enh_action.triggered.connect(self.show_enhanced_pids)
             tools_menu.addAction(enh_action)
+            self.act_enhanced = enh_action
             garage_action = QtGui.QAction("&Garage…", self)
             garage_action.triggered.connect(self.show_garage)
             tools_menu.addAction(garage_action)
@@ -4062,6 +4084,7 @@ if _HAVE_QT:
             resets_action = QtGui.QAction("&Resets / Service…", self)
             resets_action.triggered.connect(self.show_resets)
             tools_menu.addAction(resets_action)
+            self.act_resets = resets_action
             ai_settings_action = QtGui.QAction("&AI Settings…", self)
             ai_settings_action.triggered.connect(lambda: self.ai_tab.open_settings())
             tools_menu.addAction(ai_settings_action)
@@ -4153,6 +4176,12 @@ if _HAVE_QT:
         def show_settings(self):
             if SettingsDialog(self).exec():
                 self._refresh_nav_icons()
+
+        def _apply_advanced(self, on: bool):
+            self.analyzer.set_advanced(on)
+            self.live_tab.set_advanced(on)
+            self.act_enhanced.setVisible(on)
+            self.act_resets.setVisible(on)
 
         def _apply_theme(self, dark: bool):
             apply_theme(dark)
