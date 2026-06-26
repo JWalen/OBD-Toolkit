@@ -52,6 +52,26 @@ def test_estimate_power_positive(tmp_path):
     assert est.peak_torque_rpm is not None
 
 
+def test_dyno_curve(tmp_path):
+    log = _accel_log(tmp_path)
+    curve = perform.dyno_curve(log, mass_kg=1800)
+    assert curve is not None and len(curve.points) >= 3
+    assert curve.peak_hp > 50 and curve.peak_torque_nm > 0
+    # points are ordered by RPM
+    rpms = [p.rpm for p in curve.points]
+    assert rpms == sorted(rpms)
+
+
+def test_dragstrip(tmp_path):
+    log = _accel_log(tmp_path)
+    drag = perform.dragstrip(log)
+    assert drag is not None
+    assert drag.zero_to_label == "0–100 km/h"
+    assert abs(drag.zero_to_s - 5.0) < 0.3
+    # the log only reaches ~138 m (avg 50 km/h for 5 s), short of a quarter mile
+    assert drag.quarter_mile_s is None
+
+
 def test_no_speed_channel_returns_empty(tmp_path):
     path = tmp_path / "nospeed.csv"
     path.write_text("TIME,Coolant Temp\ns,°C\n0,80\n1,82\n2,84\n", encoding="utf-8")

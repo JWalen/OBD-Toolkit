@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-06-26
+
+### Added
+- **Performance pack.** The Performance dialog now reports **drag-strip** figures
+  (0–60 mph / 0–100 km/h, plus quarter-mile time + trap speed when the run is long
+  enough) and draws a **virtual dyno** — estimated crank HP & torque vs RPM — with
+  **Export dyno CSV**. (`perform.dyno_curve`, `perform.dragstrip`.)
+
 ## [1.8.0] - 2026-06-26
 
 ### Added
@@ -456,7 +464,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.8.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.9.0
 [1.8.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.8.0
 [1.7.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.7.0
 [1.6.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.6.0

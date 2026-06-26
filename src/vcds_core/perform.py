@@ -235,6 +235,130 @@ def _value_at(series, when: float) -> Optional[float]:
     return best
 
 
+@dataclass
+class DynoPoint:
+    rpm: float
+    hp: float
+    torque_nm: float
+
+
+@dataclass
+class DynoCurve:
+    points: List[DynoPoint]
+    peak_hp: float
+    peak_hp_rpm: Optional[float]
+    peak_torque_nm: float
+    peak_torque_rpm: Optional[float]
+    mass_kg: float
+
+
+def dyno_curve(
+    log: MeasuringLog,
+    mass_kg: float,
+    cd: float = 0.32,
+    frontal_area: float = 2.2,
+    crr: float = 0.015,
+    drivetrain_loss: float = 0.15,
+    bin_rpm: float = 250.0,
+) -> Optional[DynoCurve]:
+    """Estimate a crank power/torque-vs-RPM curve from a WOT pull.
+
+    Same physics as :func:`estimate_power`, but kept per-RPM-bin (max HP per bin)
+    to form an envelope curve. Approximate — depends on mass/drag assumptions.
+    """
+    ch = _speed_channel(log)
+    rpm_ch = _find(log, "Engine RPM", "Engine Speed", "RPM")
+    if ch is None or rpm_ch is None or mass_kg <= 0:
+        return None
+    s = log.raw_series.get(ch.name)
+    rpm_ser = log.raw_series.get(rpm_ch.name)
+    if not s or not rpm_ser or len(s["value"]) < 3:
+        return None
+    t = s["time"]
+    v = [_to_ms(x, ch.unit) for x in s["value"]]
+
+    bins: dict = {}
+    for i in range(1, len(v)):
+        dt = t[i] - t[i - 1]
+        if dt <= 0 or v[i] is None or v[i - 1] is None:
+            continue
+        a = (v[i] - v[i - 1]) / dt
+        if a <= 0:
+            continue
+        speed = v[i]
+        p_wheel = (mass_kg * a + 0.5 * _RHO * cd * frontal_area * speed * speed
+                   + crr * mass_kg * _G) * speed
+        crank_w = p_wheel / (1.0 - drivetrain_loss)
+        rpm = _value_at(rpm_ser, t[i])
+        if not rpm or rpm <= 0:
+            continue
+        hp = crank_w / _W_PER_HP
+        torque = crank_w / (2 * 3.141592653589793 * rpm / 60.0)
+        b = round(rpm / bin_rpm) * bin_rpm
+        cur = bins.get(b)
+        if cur is None or hp > cur.hp:
+            bins[b] = DynoPoint(rpm=rpm, hp=hp, torque_nm=torque)
+    if not bins:
+        return None
+    points = [bins[b] for b in sorted(bins)]
+    pk_hp = max(points, key=lambda p: p.hp)
+    pk_tq = max(points, key=lambda p: p.torque_nm)
+    return DynoCurve(points=points, peak_hp=pk_hp.hp, peak_hp_rpm=pk_hp.rpm,
+                     peak_torque_nm=pk_tq.torque_nm, peak_torque_rpm=pk_tq.rpm, mass_kg=mass_kg)
+
+
+@dataclass
+class DragResult:
+    zero_to_label: str
+    zero_to_s: Optional[float]
+    quarter_mile_s: Optional[float]
+    trap_speed: Optional[float]
+    speed_unit: str
+
+
+def dragstrip(log: MeasuringLog) -> Optional[DragResult]:
+    """0–60 mph (or 0–100 km/h) and quarter-mile time + trap speed from a standing run."""
+    ch = _speed_channel(log)
+    if ch is None:
+        return None
+    unit = (ch.unit or "km/h")
+    imperial = "mph" in unit.lower()
+    top = 60 if imperial else 100
+    label = "0–60 mph" if imperial else "0–100 km/h"
+    runs = find_acceleration_runs(log, 0, top)
+    if not runs:
+        return None
+    run = min(runs, key=lambda r: r.elapsed_s)
+    zero_to = run.elapsed_s
+
+    s = log.raw_series.get(ch.name)
+    t = s["time"]
+    v = [_to_ms(x, ch.unit) for x in s["value"]]
+    target = 402.336  # metres in a quarter mile
+    dist = 0.0
+    qtr = trap = None
+    started = False
+    for i in range(1, len(v)):
+        if t[i] < run.start_time or v[i] is None or v[i - 1] is None:
+            continue
+        started = True
+        dt = t[i] - t[i - 1]
+        if dt <= 0:
+            continue
+        seg = (v[i] + v[i - 1]) / 2.0 * dt
+        if dist + seg >= target:
+            frac = (target - dist) / seg if seg else 0.0
+            qtr = (t[i - 1] + frac * dt) - run.start_time
+            trap_ms = v[i]
+            trap = trap_ms * 2.236936 if imperial else trap_ms * 3.6
+            break
+        dist += seg
+    if not started:
+        return None
+    return DragResult(zero_to_label=label, zero_to_s=zero_to,
+                      quarter_mile_s=qtr, trap_speed=trap, speed_unit=unit)
+
+
 def standard_accel_runs(log: MeasuringLog) -> List[AccelRun]:
     """0–100 km/h and 100–200 km/h (or 0–60 / 60–130 mph) for the log's units."""
     ch = _speed_channel(log)

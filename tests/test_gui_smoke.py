@@ -111,6 +111,21 @@ def test_logs_dir_is_not_rosstech(monkeypatch):
     assert gui_app._default_logs_dir() == "X:/custom-logs"
 
 
+def test_performance_dialog_dyno(qapp, tmp_path):
+    from vcds_core import parse
+    rows = ["TIME,Engine RPM,Vehicle Speed,Boost (derived)", "s,/min,km/h,kPa"]
+    for k in range(51):
+        t = k * 0.1
+        rows.append(f"{t:.1f},{1000 + 600 * t:.0f},{20 * t:.2f},80")
+    p = tmp_path / "pull.csv"
+    p.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    log = parse.parse_measuring_log(str(p))
+    dlg = gui_app.PerformanceDialog(log)
+    assert dlg._curve is not None and dlg.btn_export_dyno.isEnabled()
+    assert not dlg.dyno_plot.isHidden()
+    dlg.close()
+
+
 def test_live_alert_hud(qapp):
     win = gui_app.MainWindow()
     lt = win.live_tab

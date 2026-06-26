@@ -1579,12 +1579,41 @@ if _HAVE_QT:
 
             self.out = QtWidgets.QTextBrowser()
             v.addWidget(self.out, 1)
+            self.dyno_plot = pg.PlotWidget()
+            self.dyno_plot.setLabel("bottom", "Engine RPM")
+            self.dyno_plot.setLabel("left", "HP (amber)  ·  N·m (red)")
+            self.dyno_plot.addLegend()
+            self.dyno_plot.hide()
+            v.addWidget(self.dyno_plot, 1)
+            self._curve = None
 
             buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Close)
+            self.btn_export_dyno = buttons.addButton("Export dyno CSV…",
+                                                     QtWidgets.QDialogButtonBox.ActionRole)
+            self.btn_export_dyno.clicked.connect(self._export_dyno)
+            self.btn_export_dyno.setEnabled(False)
             buttons.rejected.connect(self.reject)
             buttons.accepted.connect(self.accept)
             v.addWidget(buttons)
             self._analyze()
+
+        def _export_dyno(self):
+            if not self._curve:
+                return
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(
+                self, "Export dyno CSV", os.path.join(DEFAULT_LOGS_DIR, "dyno.csv"),
+                "CSV (*.csv)")
+            if not path:
+                return
+            try:
+                with open(path, "w", encoding="utf-8") as fh:
+                    fh.write("rpm,hp,torque_nm\n")
+                    for pt in self._curve.points:
+                        fh.write(f"{pt.rpm:.0f},{pt.hp:.1f},{pt.torque_nm:.1f}\n")
+            except Exception as exc:  # noqa: BLE001
+                QtWidgets.QMessageBox.critical(self, "Export failed", str(exc))
+                return
+            QtWidgets.QMessageBox.information(self, "Saved", f"Saved to\n{path}")
 
         def _analyze(self):
             log = self._log
@@ -1633,6 +1662,37 @@ if _HAVE_QT:
             else:
                 p.append("<p class='muted'>Need a speed channel and an acceleration event to "
                          "estimate power.</p>")
+
+            drag = perform.dragstrip(log)
+            if drag:
+                spd = "mph" if "mph" in drag.speed_unit.lower() else "km/h"
+                p.append("<h3>Drag strip</h3><ul>")
+                if drag.zero_to_s:
+                    p.append(f"<li>{drag.zero_to_label}: <b>{drag.zero_to_s:.2f}s</b></li>")
+                if drag.quarter_mile_s:
+                    p.append(f"<li>¼ mile: <b>{drag.quarter_mile_s:.2f}s</b> "
+                             f"@ {drag.trap_speed:.0f} {spd} trap</li>")
+                else:
+                    p.append("<li class='muted'>¼ mile: distance not reached in this log</li>")
+                p.append("</ul>")
+
+            curve = perform.dyno_curve(log, self.mass_spin.value())
+            self._curve = curve
+            self.dyno_plot.clear()
+            if curve:
+                rpm = [pt.rpm for pt in curve.points]
+                self.dyno_plot.plot(rpm, [pt.hp for pt in curve.points],
+                                    pen=pg.mkPen("#FF6A00", width=2), name="HP")
+                self.dyno_plot.plot(rpm, [pt.torque_nm for pt in curve.points],
+                                    pen=pg.mkPen("#E10600", width=2), name="Torque N·m")
+                self.dyno_plot.show()
+                self.btn_export_dyno.setEnabled(True)
+                p.append("<h3>Virtual dyno</h3><p class='muted'>Estimated crank HP/torque "
+                         "vs RPM (envelope from the pull) shown below — relative/tuning aid, "
+                         "not a calibrated dyno.</p>")
+            else:
+                self.dyno_plot.hide()
+                self.btn_export_dyno.setEnabled(False)
 
             econ = trip.fuel_economy(log)
             if econ:
