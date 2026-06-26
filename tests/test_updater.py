@@ -90,6 +90,7 @@ def test_launch_installer_silent_writes_helper(monkeypatch, tmp_path):
     bat = calls["cmd"][2]
     content = open(bat, encoding="ascii").read()
     assert "/VERYSILENT" in content
+    assert 'taskkill /im "App.exe"' in content  # closes the running app first
     assert "App.exe" in content  # relaunch line
     os.remove(bat)
 

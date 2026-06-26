@@ -222,14 +222,25 @@ def launch_installer(path: str, silent: bool = False, relaunch: Optional[str] = 
 
     import tempfile
 
+    exe_name = os.path.basename(relaunch) if relaunch else ""
+    tmp = tempfile.gettempdir()
+    log = os.path.join(tmp, "obd_toolkit_update.log")
+    inno_log = os.path.join(tmp, "obd_toolkit_update_inno.log")
     lines = [
         "@echo off",
-        "ping 127.0.0.1 -n 3 >nul",  # give the app a moment to exit
-        f'"{path}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS',
+        f'echo Update run >"{log}"',
+        "ping 127.0.0.1 -n 3 >nul",  # give the app a moment to start exiting
     ]
+    if exe_name:
+        # make sure the running app is fully gone so its files aren't locked
+        lines.append(f'taskkill /im "{exe_name}" /f >>"{log}" 2>&1')
+        lines.append("ping 127.0.0.1 -n 2 >nul")
+    lines.append(
+        f'"{path}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /LOG="{inno_log}"')
+    lines.append(f'echo Installer exit code: %ERRORLEVEL% >>"{log}"')
     if relaunch:
         lines.append(f'start "" "{relaunch}"')
-    bat = os.path.join(tempfile.gettempdir(), "obd_toolkit_update.bat")
+    bat = os.path.join(tmp, "obd_toolkit_update.bat")
     with open(bat, "w", encoding="ascii") as fh:
         fh.write("\r\n".join(lines) + "\r\n")
     # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
