@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.19.0] - 2026-06-26
+
+### Added
+- **Brand profiles for all common manufacturers.** Added **GM, Toyota, Honda,
+  Nissan, Mazda, Subaru, Hyundai/Kia, Chrysler/Dodge/Jeep/Ram, BMW/Mini and
+  Mercedes-Benz** — each with a brand-aware AI persona, known-issue notes, and
+  (for most) a pack of common manufacturer-specific DTCs (e.g. Hyundai KSDS
+  `P1326`, Nissan CVT `P17F0`, GM Passlock `P1626`, Honda VTEC `P1259`). VINs now
+  decode many more makes and auto-select the matching profile. Mazda is now its
+  own profile (split from Ford).
+
 ## [1.18.0] - 2026-06-26
 
 ### Added
@@ -560,7 +571,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.18.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.19.0...HEAD
+[1.19.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.19.0
 [1.18.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.18.0
 [1.17.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.17.0
 [1.16.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.16.0

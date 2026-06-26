@@ -19,6 +19,24 @@ def test_decode_ford():
     assert info.year == 2013  # 'D'
 
 
+def test_decode_more_brands():
+    cases = {
+        "1G1ZD5ST0LF012345": ("Chevrolet", "gm"),
+        "JTDKARFU0J3012345": ("Toyota", "toyota"),
+        "1HGCV1F30LA012345": ("Honda", "honda"),
+        "1N4AL3AP0JC012345": ("Nissan", "nissan"),
+        "JM1BL1SF0A1012345": ("Mazda", "mazda"),
+        "JF1GJAA60EH012345": ("Subaru", "subaru"),
+        "KMHD84LF0JU012345": ("Hyundai", "hyundai"),
+        "1C4RJFAG0LC012345": ("Jeep", "mopar"),
+        "WBA8E9C50JA012345": ("BMW", "bmw"),
+        "WDDGF4HB0CR012345": ("Mercedes-Benz", "mercedes"),
+    }
+    for v, (make, profile) in cases.items():
+        info = vin.decode_vin(v)
+        assert info.make == make and info.brand_profile == profile, v
+
+
 def test_decode_unknown_is_generic():
     info = vin.decode_vin("ZZZ12345678901234")
     assert info.brand_profile == "generic"

@@ -7,12 +7,28 @@ from vcds_core.diagnose import diagnose
 
 
 def test_profiles_registry():
-    assert set(profiles.PROFILES) == {"generic", "vag", "ford"}
+    expected = {"generic", "vag", "ford", "gm", "toyota", "honda", "nissan",
+                "mazda", "subaru", "hyundai", "mopar", "bmw", "mercedes"}
+    assert set(profiles.PROFILES) == expected
     assert profiles.get_profile("ford").id == "ford"
     assert profiles.get_profile("nonsense").id == profiles.DEFAULT_PROFILE
-    # personas differ per brand
+    # every profile has a non-empty persona, label and id
+    for pid, prof in profiles.PROFILES.items():
+        assert prof.id == pid and prof.label and prof.ai_persona
     assert "VAG" in profiles.get_profile("vag").ai_persona
-    assert "Ford" in profiles.get_profile("ford").ai_persona
+    assert "Toyota" in profiles.get_profile("toyota").ai_persona
+
+
+def test_brand_code_packs():
+    from vcds_core import knowledge
+
+    cases = {"gm": "P1336", "toyota": "P1349", "honda": "P1259", "nissan": "P17F0",
+             "mazda": "P2096", "subaru": "P0011", "hyundai": "P1326", "mopar": "P0521"}
+    for brand, code in cases.items():
+        k = knowledge.lookup(code, brand=brand)
+        assert k.known and k.description and k.causes, f"{brand}:{code}"
+    # the Hyundai KSDS rod-bearing code is flagged high severity
+    assert knowledge.lookup("P1326", brand="hyundai").severity == "high"
 
 
 def test_vag_notes_only_for_vag_profile(samples_dir):
