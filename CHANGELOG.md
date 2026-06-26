@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-06-25
+
+### Changed
+- **Re-themed app icon** to match the carbon look — a graphite tile with an amber
+  boost gauge, redline sweep and racing-red needle. Ships as a Windows `.ico`,
+  a macOS `.icns` (regenerated natively in CI) and a `.png`, so the **macOS app
+  is now branded**.
+
 ## [1.5.0] - 2026-06-25
 
 ### Added
@@ -424,7 +432,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/JWalen/VAGScanner/releases/tag/v1.5.1
 [1.5.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.5.0
 [1.4.2]: https://github.com/JWalen/VAGScanner/releases/tag/v1.4.2
 [1.4.1]: https://github.com/JWalen/VAGScanner/releases/tag/v1.4.1
