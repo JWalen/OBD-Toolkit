@@ -2885,7 +2885,10 @@ if _HAVE_QT:
             self.key_link = QtWidgets.QLabel()
             self.key_link.setOpenExternalLinks(True)
             form.addRow("", self.key_link)
-            note = QtWidgets.QLabel("Keys are stored locally in your user settings (not encrypted).")
+            note = QtWidgets.QLabel(
+                "Keys are stored locally in your user settings (not encrypted). Messages and any "
+                "context you include (diagnosis, stored logs, live VIN/DTCs) are sent to the "
+                "selected provider over the internet to generate replies.")
             note.setObjectName("Muted")
             note.setWordWrap(True)
             form.addRow("", note)
@@ -3003,6 +3006,29 @@ if _HAVE_QT:
         def open_settings(self):
             if AiSettingsDialog(self.settings, self).exec():
                 self._update_model_label()
+
+        def _ensure_ai_consent(self) -> bool:
+            """One-time consent before sending any car data to a third-party AI."""
+            if self.settings.value("ai/consent", False, type=bool):
+                return True
+            pid = self.settings.value("ai/provider", "anthropic", type=str)
+            prov = ai.PROVIDERS.get(pid)
+            name = prov.label if prov else pid
+            box = QtWidgets.QMessageBox(self)
+            box.setWindowTitle("Send data to the AI provider?")
+            box.setIcon(QtWidgets.QMessageBox.Question)
+            box.setText(
+                f"Your messages — and any context you include (a diagnosis of the open "
+                f"scan/log, and, when you ask, your stored logs or live-car data such as VIN "
+                f"and DTCs) — are sent over the internet to {name} to generate a reply.\n\n"
+                f"Don't include anything you don't want shared with a third party. This is "
+                f"asked once; you can clear it later by resetting the app.\n\nProceed?")
+            box.setStandardButtons(QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+            box.setDefaultButton(QtWidgets.QMessageBox.No)
+            if box.exec() == QtWidgets.QMessageBox.Yes:
+                self.settings.setValue("ai/consent", True)
+                return True
+            return False
 
         def _update_model_label(self):
             pid = self.settings.value("ai/provider", "anthropic", type=str)
@@ -3222,6 +3248,8 @@ if _HAVE_QT:
                     QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.Yes)
                 if r == QtWidgets.QMessageBox.Yes:
                     self.open_settings()
+                return
+            if not self._ensure_ai_consent():
                 return
             prov = ai.PROVIDERS.get(pid)
             model = self.settings.value(

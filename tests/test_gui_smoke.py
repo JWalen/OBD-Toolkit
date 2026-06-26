@@ -105,6 +105,25 @@ def test_ai_multi_chat(qapp, tmp_path, monkeypatch):
     win.close()
 
 
+def test_ai_consent_gate(qapp, monkeypatch):
+    win = gui_app.MainWindow()
+    tab = win.ai_tab
+    tab.settings.setValue("ai/consent", False)
+    # Decline -> no consent recorded, send blocked
+    monkeypatch.setattr(gui_app.QtWidgets.QMessageBox, "exec",
+                        lambda self: gui_app.QtWidgets.QMessageBox.No)
+    assert tab._ensure_ai_consent() is False
+    assert tab.settings.value("ai/consent", False, type=bool) is False
+    # Accept -> consent recorded, and subsequent calls don't re-prompt
+    monkeypatch.setattr(gui_app.QtWidgets.QMessageBox, "exec",
+                        lambda self: gui_app.QtWidgets.QMessageBox.Yes)
+    assert tab._ensure_ai_consent() is True
+    assert tab.settings.value("ai/consent", False, type=bool) is True
+    assert tab._ensure_ai_consent() is True  # no dialog needed now
+    tab.settings.setValue("ai/consent", False)  # cleanup
+    win.close()
+
+
 def test_ai_export_chat(qapp, tmp_path, monkeypatch):
     win = gui_app.MainWindow()
     tab = win.ai_tab

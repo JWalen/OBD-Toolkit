@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.24.0] - 2026-06-26
+
+### Added
+- **AI privacy consent.** Before the assistant first sends anything, a one-time
+  prompt makes clear that your messages and included context (diagnosis, stored
+  logs, live VIN/DTCs) go to the selected provider over the internet — and lets
+  you decline. AI Settings now states this too.
+
 ## [1.23.0] - 2026-06-26
 
 ### Added
@@ -617,7 +625,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.23.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.24.0...HEAD
+[1.24.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.24.0
 [1.23.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.23.0
 [1.22.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.22.0
 [1.21.1]: https://github.com/JWalen/VAGScanner/releases/tag/v1.21.1
