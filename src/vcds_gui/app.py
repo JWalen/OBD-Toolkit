@@ -437,6 +437,9 @@ if _HAVE_QT:
             self.btn_fit = QtWidgets.QPushButton("⤢ Fit")
             self.btn_fit.setToolTip("Auto-fit the graph to all visible data")
             self.btn_export = QtWidgets.QPushButton("Export View…")
+            self.view_combo = QtWidgets.QComboBox()
+            self.view_combo.addItems(["📈 Graph", "▦ Data"])
+            self.view_combo.setToolTip("Switch between the line graph and the raw data table")
             self.btn_diagnose = QtWidgets.QPushButton("🔍 Diagnose")
             self.btn_diagnose.setToolTip("Analyze the loaded log and/or Auto-Scan for likely faults")
             self.btn_perf = QtWidgets.QPushButton("📈 Performance")
@@ -446,7 +449,7 @@ if _HAVE_QT:
             self.lbl_info = QtWidgets.QLabel("No file loaded.")
             for w in (self.btn_open, self.btn_scan, self.btn_diagnose, self.btn_perf,
                       self.btn_compare, self.chk_norm, self.chk_measure, self.btn_fit,
-                      self.btn_export):
+                      self.btn_export, self.view_combo):
                 bar.addWidget(w)
             bar.addWidget(self.lbl_info, 1)
             outer.addLayout(bar)
@@ -491,9 +494,14 @@ if _HAVE_QT:
 
             split.addWidget(left)
 
-            # center: shared plot
+            # center: graph / data table, switchable
             self.plot = PlotPanel()
-            split.addWidget(self.plot)
+            self.data_table = QtWidgets.QTableWidget()
+            self.data_table.setEditTriggers(QtWidgets.QTableWidget.NoEditTriggers)
+            self.center_stack = QtWidgets.QStackedWidget()
+            self.center_stack.addWidget(self.plot)       # index 0 — graph
+            self.center_stack.addWidget(self.data_table)  # index 1 — data
+            split.addWidget(self.center_stack)
 
             # right: autoscan
             right = QtWidgets.QWidget()
@@ -516,6 +524,7 @@ if _HAVE_QT:
             self.chk_measure.toggled.connect(self.plot.set_measure)
             self.btn_fit.clicked.connect(self.plot.auto_fit)
             self.btn_export.clicked.connect(self.export_view)
+            self.view_combo.currentIndexChanged.connect(self._set_view)
             self.btn_diagnose.clicked.connect(self.run_diagnosis)
             self.btn_perf.clicked.connect(self.run_performance)
             self.btn_compare.clicked.connect(self.open_compare)
@@ -525,6 +534,48 @@ if _HAVE_QT:
             self.btn_add_rule.clicked.connect(self._add_rule)
             self.btn_clear_rules.clicked.connect(self._clear_rules)
             self.event_list.itemClicked.connect(self._event_clicked)
+
+        # -- graph / data view ---------------------------------------------- #
+        def _set_view(self, idx):
+            self.center_stack.setCurrentIndex(idx)
+            if idx == 1:
+                self._populate_data_table()
+
+        def _refresh_data_view(self):
+            if self.center_stack.currentIndex() == 1:
+                self._populate_data_table()
+
+        def _populate_data_table(self):
+            log = self.mlog
+            self.data_table.clearContents()
+            if log is None:
+                self.data_table.setRowCount(0)
+                self.data_table.setColumnCount(1)
+                self.data_table.setHorizontalHeaderLabels(["No file loaded"])
+                return
+            names = [c.name for c in log.channels]
+            units_by = {c.name: c.unit for c in log.channels}
+            series = log.raw_series
+            master = []
+            for n in names:
+                t = series.get(n, {}).get("time", [])
+                if len(t) > len(master):
+                    master = t
+            cols = ["Time (s)"] + [f"{n} [{units_by.get(n)}]" if units_by.get(n) else n
+                                   for n in names]
+            self.data_table.setUpdatesEnabled(False)
+            self.data_table.setColumnCount(len(cols))
+            self.data_table.setHorizontalHeaderLabels(cols)
+            self.data_table.setRowCount(len(master))
+            Item = QtWidgets.QTableWidgetItem
+            for i, tv in enumerate(master):
+                self.data_table.setItem(i, 0, Item(f"{tv:g}"))
+                for c, n in enumerate(names, start=1):
+                    vals = series.get(n, {}).get("value", [])
+                    v = vals[i] if i < len(vals) else None
+                    self.data_table.setItem(i, c, Item("" if v is None else f"{v:g}"))
+            self.data_table.setUpdatesEnabled(True)
+            self.data_table.resizeColumnsToContents()
 
         # -- loading -------------------------------------------------------- #
         def open_csv_dialog(self):
@@ -568,6 +619,7 @@ if _HAVE_QT:
                 f"{len(self.mlog.channels)} channels"
             )
             self.event_list.clear()
+            self._refresh_data_view()
 
         def open_scan_dialog(self):
             path, _ = QtWidgets.QFileDialog.getOpenFileName(

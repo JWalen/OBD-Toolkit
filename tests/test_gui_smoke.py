@@ -249,6 +249,15 @@ def test_analyzer_loads_csv_and_runs_events(qapp, samples_dir):
     tab.run_events(use_rules=False)
     assert tab.event_list.count() > 0
 
+    # Graph / Data view toggle: switching to Data fills a table
+    tab.view_combo.setCurrentIndex(1)
+    assert tab.center_stack.currentIndex() == 1
+    assert tab.data_table.rowCount() > 0
+    assert tab.data_table.columnCount() == len(tab.mlog.channels) + 1  # +Time
+    assert tab.data_table.horizontalHeaderItem(0).text() == "Time (s)"
+    tab.view_combo.setCurrentIndex(0)
+    assert tab.center_stack.currentIndex() == 0
+
     # cursor readout works at an arbitrary time
     tab.plot.set_cursor(2.0)
     assert "t = 2.000" in tab.plot.readout.text()
