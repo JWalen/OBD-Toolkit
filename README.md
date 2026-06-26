@@ -1,15 +1,43 @@
-# vcds-toolkit
+# OBD Toolkit  <sub>(package: `vcds-toolkit`)</sub>
 
-Analyze and capture data from a VAG/Audi car on Windows. Three data sources feed
-one shared, dependency-free parsing/analysis core, surfaced through two
-front-ends — an **MCP server** (for Claude Desktop / Claude Code) and a
-**desktop GUI**.
+A full-featured, multi-brand **OBD-II / VAG** desktop app (Windows **and macOS**)
+for analyzing car data and capturing it live. Three data sources feed one shared,
+dependency-free parsing/analysis core, surfaced through a modern **desktop GUI**,
+an **MCP server** (for Claude Desktop / Claude Code), and an in-app **AI
+assistant**.
 
 ```
  VCDS .CSV measuring logs ┐
  VCDS .TXT Auto-Scans     ├─►  vcds_core  ─►  MCP server (vcds-mcp)
- Live ELM327 OBD-II       ┘   (stdlib only)    Desktop GUI (vcds-gui)
+ Live ELM327 OBD-II       ┘   (stdlib only)    Desktop GUI  +  AI assistant
 ```
+
+## Highlights
+
+- **Carbon dashboard UI** — motorsport-styled dark theme, left-sidebar
+  navigation, and a Dashboard home; responsive to any window size.
+- **Analyze** — VCDS measuring logs & Auto-Scans plus generic importers
+  (Torque / OBD Fusion / FORScan); diagnostic engine + DTC knowledge base;
+  computed channels (fuel trims, AFR, boost); A/B comparison; PDF/HTML reports;
+  a Graph **and** raw-Data view.
+- **Live OBD-II** (USB / **Bluetooth** / **Wi-Fi** ELM327) — all supported PIDs,
+  needle/bar gauges, an **always-on Live Data table**, **live threshold alerts**
+  (flash + beep), event capture, and a **⚡ Smooth (async)** high-rate mode.
+- **Auto-identify on connect** — reads VIN / cal-IDs / ECU / protocol, **creates
+  a Garage vehicle the first time a car is seen**, routes its logs to that
+  profile's folder, and stamps each log with the vehicle's identity.
+- **Performance** — 0-60 / quarter-mile, a virtual dyno (HP/torque vs RPM),
+  trip/economy and battery analysis.
+- **Ownership** — multi-vehicle **Garage**, **Maintenance & reminders** (service
+  intervals + fuel/cost log), per-vehicle log folders.
+- **Emissions** — readiness monitors, Mode 06 on-board tests, a one-page smog
+  report, and safe standardized resets (clear DTCs / readiness).
+- **AI assistant** — streaming, multi-provider (Claude / GPT / Gemini), agentic
+  tools that read your logs *and* the live car; modern multi-chat UX.
+- **Brands** — VAG / Ford / Generic profiles (auto-selected from VIN).
+- Auto-updating signed-capable Windows installer + macOS `.dmg`.
+
+Logs, garage and chats live in `~/Documents/OBD Toolkit/Logs`.
 
 ---
 

@@ -91,6 +91,13 @@ def test_ai_multi_chat(qapp, tmp_path, monkeypatch):
     # a second chat
     tab._new_chat()
     assert len(tab.chats) == 2 and tab.chat_list.count() == 2
+    # rename + search
+    tab.chats[0]["title"] = "renamed top"
+    tab._refresh_titles()
+    assert tab.chat_list.item(0).text() == "renamed top"
+    tab._filter_chats("boost")
+    hidden = [tab.chat_list.item(i).isHidden() for i in range(tab.chat_list.count())]
+    assert any(hidden) and not all(hidden)  # the boost chat stays visible
     # reload from disk persists
     import json
     data = json.load(open(str(tmp_path / "ai_chats.json"), encoding="utf-8"))

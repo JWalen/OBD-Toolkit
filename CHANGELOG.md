@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-06-26
+
+### Added
+- **Chat management**: rename a conversation (double-click), a **search box** to
+  filter chats, and a confirmation before deleting.
+
+### Changed
+- README rewritten to reflect the full feature set (now "OBD Toolkit").
+
 ## [1.17.0] - 2026-06-26
 
 ### Changed
@@ -551,7 +560,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.17.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.18.0...HEAD
+[1.18.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.18.0
 [1.17.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.17.0
 [1.16.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.16.0
 [1.15.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.15.0

@@ -2815,7 +2815,12 @@ if _HAVE_QT:
             self.btn_new = QtWidgets.QPushButton("＋  New chat")
             self.btn_new.setObjectName("Accent")
             left.addWidget(self.btn_new)
+            self.chat_search = QtWidgets.QLineEdit()
+            self.chat_search.setPlaceholderText("Search chats…")
+            self.chat_search.setClearButtonEnabled(True)
+            left.addWidget(self.chat_search)
             self.chat_list = QtWidgets.QListWidget()
+            self.chat_list.setToolTip("Double-click to rename")
             left.addWidget(self.chat_list, 1)
             self.btn_delete = QtWidgets.QPushButton("🗑  Delete")
             left.addWidget(self.btn_delete)
@@ -2858,6 +2863,8 @@ if _HAVE_QT:
             self.btn_new.clicked.connect(self._new_chat)
             self.btn_delete.clicked.connect(self._delete_chat)
             self.chat_list.currentRowChanged.connect(self._select_chat)
+            self.chat_list.itemDoubleClicked.connect(self._rename_chat)
+            self.chat_search.textChanged.connect(self._filter_chats)
             self.btn_settings.clicked.connect(self.open_settings)
             self.btn_save_chat.clicked.connect(self._save_chat)
             self.btn_send.clicked.connect(self.send)
@@ -2968,12 +2975,35 @@ if _HAVE_QT:
             row = self.chat_list.currentRow()
             if row < 0 or not self.chats:
                 return
+            if QtWidgets.QMessageBox.question(
+                    self, "Delete chat", "Delete this conversation? This can't be undone.",
+                    QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                    QtWidgets.QMessageBox.No) != QtWidgets.QMessageBox.Yes:
+                return
             del self.chats[row]
             if not self.chats:
                 self.chats = [self._blank_chat()]
             self._save_chats()
             self._refresh_chat_list()
             self.chat_list.setCurrentRow(0)
+
+        def _rename_chat(self, item):
+            row = self.chat_list.row(item)
+            if row < 0 or row >= len(self.chats):
+                return
+            text, ok = QtWidgets.QInputDialog.getText(
+                self, "Rename chat", "Title:", text=self.chats[row].get("title") or "")
+            if ok and text.strip():
+                self.chats[row]["title"] = text.strip()
+                self._refresh_titles()
+                self._save_chats()
+
+        def _filter_chats(self, text):
+            needle = (text or "").lower()
+            for i, c in enumerate(self.chats):
+                it = self.chat_list.item(i)
+                if it:
+                    it.setHidden(needle not in (c.get("title") or "").lower())
 
         def _save_chat(self):
             if not self.history:
