@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-06-25
+
+### Fixed
+- **App reported an old version (e.g. 1.0.1) after updating.** The real cause:
+  each update left its `vcds_toolkit-<ver>.dist-info` behind in the install
+  folder, and the app read the version by scanning those — returning the oldest.
+  Now the build embeds a literal `_version.py` that is authoritative, and the
+  installer **deletes stale `*.dist-info` folders** before installing. (To pick
+  this up you must update once; existing piled-up folders are cleaned by the new
+  installer — or delete the old `_internal\vcds_toolkit-*.dist-info` folders by
+  hand.)
+
 ## [1.4.1] - 2026-06-25
 
 ### Fixed
@@ -396,7 +408,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.4.1...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.4.2...HEAD
+[1.4.2]: https://github.com/JWalen/VAGScanner/releases/tag/v1.4.2
 [1.4.1]: https://github.com/JWalen/VAGScanner/releases/tag/v1.4.1
 [1.4.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.4.0
 [1.3.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.3.0

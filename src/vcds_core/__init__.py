@@ -6,10 +6,16 @@ MUST remain standard-library only.
 
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
 
+# Resolve the version robustly. A literal ``_version.py`` (written at build time)
+# is authoritative — this avoids a frozen app reading the WRONG version from a
+# stale ``*.dist-info`` left behind by an earlier install in the same folder.
 try:
-    __version__ = _pkg_version("vcds-toolkit")
-except PackageNotFoundError:  # running from a source tree without an install
-    __version__ = "0.0.0+source"
+    from ._version import __version__
+except ImportError:
+    try:
+        __version__ = _pkg_version("vcds-toolkit")
+    except PackageNotFoundError:  # running from a source tree without an install
+        __version__ = "0.0.0+source"
 
 from .parse import (
     AutoScan,

@@ -32,6 +32,12 @@ $Version = & $Python -c "import tomllib; print(tomllib.load(open('pyproject.toml
 $Version = $Version.Trim()
 Write-Host "==> Version: $Version" -ForegroundColor Cyan
 
+# Write a literal _version.py so the frozen app reports the build version even if
+# a stale *.dist-info from an earlier install lingers in the same folder.
+$VersionFile = Join-Path $Root "src\vcds_core\_version.py"
+Set-Content -Path $VersionFile -Value "__version__ = `"$Version`"`n" -Encoding ascii -NoNewline
+Write-Host "==> Wrote $VersionFile" -ForegroundColor Cyan
+
 # Ensure build tooling + the project itself are installed.
 Write-Host "==> Installing PyInstaller and the project (with GUI extras)..." -ForegroundColor Cyan
 & $Python -m pip install --upgrade pip pyinstaller | Out-Null

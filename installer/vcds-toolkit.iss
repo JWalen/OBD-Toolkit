@@ -53,6 +53,12 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
+[InstallDelete]
+; Remove stale Python metadata folders from earlier versions so the app never
+; reads an old version number from a left-behind *.dist-info.
+Type: filesandordirs; Name: "{app}\_internal\vcds_toolkit-*.dist-info"
+Type: filesandordirs; Name: "{app}\vcds_toolkit-*.dist-info"
+
 [Files]
 ; The entire PyInstaller bundle.
 Source: "{#BuildDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

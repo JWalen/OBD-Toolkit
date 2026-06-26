@@ -39,3 +39,4 @@ src/*.egg-info/
 installer/Output/
 installer/build/
 installer/dist/
+src/vcds_core/_version.py
