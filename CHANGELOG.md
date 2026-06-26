@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-06-26
+
+### Added
+- **Always-on Live Data screen** (Live tab → 📋 Live Data). A continuously
+  streaming table of the selected PIDs — current value, unit, session **min/max**
+  and a **trend arrow** — that free-runs on its own poller (no need to start a
+  recording). While you *are* recording it updates from the live sample stream,
+  and resumes free-running when the recording stops. Includes a Reset min/max.
+
 ## [1.10.1] - 2026-06-26
 
 ### Fixed
@@ -485,7 +494,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.10.1...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.11.0...HEAD
+[1.11.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.11.0
 [1.10.1]: https://github.com/JWalen/VAGScanner/releases/tag/v1.10.1
 [1.10.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.10.0
 [1.9.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.9.0

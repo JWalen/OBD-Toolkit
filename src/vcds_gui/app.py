@@ -748,6 +748,121 @@ if _HAVE_QT:
             except Exception as exc:  # noqa: BLE001
                 self.failed.emit(str(exc))
 
+    class LiveDataPoller(QtCore.QObject):
+        """Free-running poller: snapshots the adapter on an interval (own thread)."""
+
+        values = QtCore.Signal(dict)
+        failed = QtCore.Signal(str)
+
+        def __init__(self, conn, channels, interval_ms=600):
+            super().__init__()
+            self.conn = conn
+            self.channels = channels
+            self.interval_ms = interval_ms
+            self._stop = False
+
+        def stop(self):
+            self._stop = True
+
+        @QtCore.Slot()
+        def run(self):
+            while not self._stop:
+                try:
+                    snap = live.snapshot(self.conn, self.channels)
+                except Exception as exc:  # noqa: BLE001
+                    self.failed.emit(str(exc))
+                    return
+                if self._stop:
+                    return
+                self.values.emit(dict(snap))
+                QtCore.QThread.msleep(int(self.interval_ms))
+
+    class LiveDataWindow(QtWidgets.QWidget):
+        """Always-on Live Data table: current value, unit, min/max and trend per PID."""
+
+        COLS = ["PID", "Value", "Unit", "Min", "Max", "Trend"]
+
+        def __init__(self, channels, parent=None):
+            super().__init__(parent)
+            self.setWindowTitle("Live Data")
+            self.resize(560, 640)
+            self._channels = list(channels)
+            self._rows = {}      # channel name -> row index
+            self._stats = {}     # name -> [min, max, last]
+            self._thread = None
+            self._poller = None
+
+            v = QtWidgets.QVBoxLayout(self)
+            self.status = QtWidgets.QLabel("Streaming…")
+            self.status.setObjectName("Muted")
+            v.addWidget(self.status)
+            self.table = QtWidgets.QTableWidget(len(self._channels), len(self.COLS))
+            self.table.setHorizontalHeaderLabels(self.COLS)
+            self.table.setEditTriggers(QtWidgets.QTableWidget.NoEditTriggers)
+            self.table.verticalHeader().setVisible(False)
+            for r, ch in enumerate(self._channels):
+                self._rows[ch.name] = r
+                self.table.setItem(r, 0, QtWidgets.QTableWidgetItem(ch.name))
+                self.table.setItem(r, 2, QtWidgets.QTableWidgetItem(ch.unit or ""))
+                for c in (1, 3, 4, 5):
+                    self.table.setItem(r, c, QtWidgets.QTableWidgetItem("—"))
+            self.table.resizeColumnsToContents()
+            v.addWidget(self.table, 1)
+            row = QtWidgets.QHBoxLayout()
+            btn_reset = QtWidgets.QPushButton("Reset min/max")
+            btn_reset.clicked.connect(self._reset_stats)
+            row.addStretch(1)
+            row.addWidget(btn_reset)
+            v.addLayout(row)
+
+        def _reset_stats(self):
+            self._stats.clear()
+            for r in range(self.table.rowCount()):
+                for c in (3, 4, 5):
+                    self.table.item(r, c).setText("—")
+
+        @QtCore.Slot(dict)
+        def update_values(self, values):
+            for name, val in values.items():
+                r = self._rows.get(name)
+                if r is None or val is None:
+                    continue
+                st = self._stats.get(name)
+                if st is None:
+                    st = [val, val, val]
+                    self._stats[name] = st
+                arrow = "▲" if val > st[2] + 1e-9 else ("▼" if val < st[2] - 1e-9 else "•")
+                st[0] = min(st[0], val)
+                st[1] = max(st[1], val)
+                st[2] = val
+                self.table.item(r, 1).setText(f"{val:g}")
+                self.table.item(r, 3).setText(f"{st[0]:g}")
+                self.table.item(r, 4).setText(f"{st[1]:g}")
+                self.table.item(r, 5).setText(arrow)
+
+        def start_poll(self, conn):
+            self.stop_poll()
+            self._thread = QtCore.QThread()
+            self._poller = LiveDataPoller(conn, self._channels)
+            self._poller.moveToThread(self._thread)
+            self._thread.started.connect(self._poller.run)
+            self._poller.values.connect(self.update_values)
+            self._poller.failed.connect(lambda m: self.status.setText(f"Stopped: {m}"))
+            self._thread.start()
+            self.status.setText("Streaming live…")
+
+        def stop_poll(self):
+            if self._poller is not None:
+                self._poller.stop()
+            if self._thread is not None:
+                self._thread.quit()
+                self._thread.wait(1500)
+            self._poller = self._thread = None
+
+        def closeEvent(self, event):
+            self.stop_poll()
+            super().closeEvent(event)
+
     # --------------------------------------------------------------------- #
     # Tab 2 — Live (OBD-II)
     # --------------------------------------------------------------------- #
@@ -762,6 +877,7 @@ if _HAVE_QT:
             self.logger: Optional[live.LiveLogger] = None
             self.trigger_rules: List[dict] = []
             self._gauges = None
+            self._livedata = None
             self.settings = QtCore.QSettings("DeltaModTech", "VCDS Toolkit")
             self._presets: dict = {}
             self._build()
@@ -932,6 +1048,9 @@ if _HAVE_QT:
             self.btn_gauges = QtWidgets.QPushButton("📊 Gauges")
             self.btn_gauges.setToolTip("Open a live gauge dashboard for the selected PIDs")
             run_bar.addWidget(self.btn_gauges)
+            self.btn_livedata = QtWidgets.QPushButton("📋 Live Data")
+            self.btn_livedata.setToolTip("Open an always-on live data table for the selected PIDs")
+            run_bar.addWidget(self.btn_livedata)
             self.chk_alert = QtWidgets.QCheckBox("🔔 Alerts")
             self.chk_alert.setChecked(True)
             self.chk_alert.setToolTip("Flash and beep when a threshold rule is breached live")
@@ -958,6 +1077,7 @@ if _HAVE_QT:
             self.btn_start.clicked.connect(self.start_logging)
             self.btn_stop.clicked.connect(self.stop_logging)
             self.btn_gauges.clicked.connect(self.open_gauges)
+            self.btn_livedata.clicked.connect(self.open_live_data)
             self.capture_list.itemDoubleClicked.connect(self._open_capture)
 
             self.scan_ports()
@@ -1103,6 +1223,10 @@ if _HAVE_QT:
                 self._load_presets()
 
         def disconnect_adapter(self):
+            if self._livedata is not None:
+                self._livedata.stop_poll()
+                self._livedata.close()
+                self._livedata = None
             if self.conn is not None:
                 try:
                     self.conn.close()
@@ -1116,7 +1240,7 @@ if _HAVE_QT:
             self.btn_connect.setEnabled(not on)
             self.btn_disconnect.setEnabled(on)
             for w in (self.btn_start, self.btn_read_dtc, self.btn_clear_dtc,
-                      self.btn_vehinfo, self.btn_mode06):
+                      self.btn_vehinfo, self.btn_mode06, self.btn_livedata):
                 w.setEnabled(on)
 
         def show_onboard_tests(self):
@@ -1249,6 +1373,11 @@ if _HAVE_QT:
         def start_logging(self):
             if self.conn is None:
                 return
+            # The logger owns the connection during a session — pause the
+            # free-running Live Data poller; it'll update from the sample stream.
+            if self._livedata is not None and self._livedata.isVisible():
+                self._livedata.stop_poll()
+                self._livedata.status.setText("Streaming from the active recording…")
             channels = self._selected_channels()
             self.plot.clear()
             for ch in channels:
@@ -1287,6 +1416,24 @@ if _HAVE_QT:
             self._gauges = GaugeWindow(channels, system, self)
             self._gauges.set_thresholds(self.trigger_rules)
             self._gauges.show()
+
+        def open_live_data(self):
+            if self.conn is None:
+                QtWidgets.QMessageBox.information(
+                    self, "Live Data", "Connect to an adapter first.")
+                return
+            channels = self._selected_channels()
+            if not channels:
+                QtWidgets.QMessageBox.information(
+                    self, "Live Data", "Select at least one PID to stream.")
+                return
+            self._livedata = LiveDataWindow(channels, self)
+            # Free-run its own poller only when not recording (shared connection).
+            if self.logger is None or not self.btn_stop.isEnabled():
+                self._livedata.start_poll(self.conn)
+            else:
+                self._livedata.status.setText("Streaming from the active recording…")
+            self._livedata.show()
 
         _ALERT_OPS = {
             ">": lambda a, b: a > b, "<": lambda a, b: a < b,
@@ -1338,15 +1485,23 @@ if _HAVE_QT:
             self.plot.append_sample(t, values)
             if self._gauges is not None and self._gauges.isVisible():
                 self._gauges.update_values(values)
+            if self._livedata is not None and self._livedata.isVisible():
+                self._livedata.update_values(values)
             self._update_alerts(values)
             if marker:
                 self.run_status.setText(f"Logging… (event at t={t:.1f}s)")
+
+        def _resume_livedata(self):
+            if (self._livedata is not None and self._livedata.isVisible()
+                    and self.conn is not None):
+                self._livedata.start_poll(self.conn)
 
         @QtCore.Slot(object)
         def _on_finished(self, result):
             self.btn_start.setEnabled(True)
             self.btn_stop.setEnabled(False)
             self._clear_alerts()
+            self._resume_livedata()
             self.run_status.setText(
                 f"Saved {os.path.basename(result.session_file)} ({result.sample_count} samples)."
             )
@@ -1377,6 +1532,7 @@ if _HAVE_QT:
             self.btn_start.setEnabled(True)
             self.btn_stop.setEnabled(False)
             self._clear_alerts()
+            self._resume_livedata()
             self.run_status.setText(f"Error: {msg}")
 
         def _open_capture(self, item: "QtWidgets.QListWidgetItem"):

@@ -160,6 +160,29 @@ def test_live_alert_hud(qapp):
     win.close()
 
 
+def test_live_data_window(qapp):
+    from vcds_obd import live
+    chans = live.build_channels({"RPM", "COOLANT_TEMP"})
+    assert chans
+    win = gui_app.LiveDataWindow(chans)
+    name = chans[0].name
+    win.update_values({name: 1000.0})
+    win.update_values({name: 1500.0})
+    r = win._rows[name]
+    assert win.table.item(r, 1).text() == "1500"   # current
+    assert win.table.item(r, 3).text() == "1000"   # min
+    assert win.table.item(r, 4).text() == "1500"   # max
+    win.update_values({name: 1200.0})
+    assert win.table.item(r, 5).text() == "▼"       # trend down
+    win.close()
+
+
+def test_live_tab_has_livedata_button(qapp):
+    win = gui_app.MainWindow()
+    assert win.live_tab.btn_livedata is not None
+    win.close()
+
+
 def test_wifi_button_sets_socket_port(qapp, monkeypatch):
     win = gui_app.MainWindow()
     lt = win.live_tab
