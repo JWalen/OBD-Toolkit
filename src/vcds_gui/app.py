@@ -1193,6 +1193,17 @@ if _HAVE_QT:
                     wanted.add(it.data(QtCore.Qt.UserRole))
             return [c for c in self.channels if c.name in wanted] or self.channels
 
+        def _session_dir(self) -> str:
+            """Live logs go into a per-vehicle subfolder named from the VIN."""
+            vin = self.main.settings.value("garage/active_vin", "", type=str)
+            if not vin:
+                return DEFAULT_LOGS_DIR
+            veh = garage_mod.find(
+                garage_mod.load_garage(os.path.join(DEFAULT_LOGS_DIR, "garage.json")), vin)
+            sub = (garage_mod.log_folder_name(veh) if veh
+                   else garage_mod._safe_dirname(vin[-12:]))
+            return os.path.join(DEFAULT_LOGS_DIR, sub)
+
         def start_logging(self):
             if self.conn is None:
                 return
@@ -1200,7 +1211,7 @@ if _HAVE_QT:
             self.plot.clear()
             for ch in channels:
                 self.plot.add_channel(ch.name, [], [], ch.unit)
-            logs_dir = DEFAULT_LOGS_DIR
+            logs_dir = self._session_dir()
             self.logger = live.LiveLogger(self.conn, channels, logs_dir, sample_rate_hz=self.rate_spin.value())
 
             session_name = _safe_session_name(self.name_edit.text())
@@ -1255,7 +1266,11 @@ if _HAVE_QT:
             if active:
                 path = os.path.join(DEFAULT_LOGS_DIR, "garage.json")
                 vehicles = garage_mod.load_garage(path)
-                if garage_mod.add_session(vehicles, active, os.path.basename(result.session_file)):
+                try:
+                    rel = os.path.relpath(result.session_file, DEFAULT_LOGS_DIR)
+                except ValueError:
+                    rel = os.path.basename(result.session_file)
+                if garage_mod.add_session(vehicles, active, rel):
                     garage_mod.save_garage(path, vehicles)
             for cap in result.captures:
                 item = QtWidgets.QListWidgetItem(
@@ -2937,22 +2952,24 @@ if _HAVE_QT:
                     f"{veh.label}\nVIN {veh.vin}" if veh else f"VIN {vin}")
             else:
                 self.veh_body.setText("No active vehicle.\nRead Vehicle Info or open the Garage.")
-            # recent logs
+            # recent logs (incl. per-vehicle subfolders)
             self.recent_list.clear()
+            base = DEFAULT_LOGS_DIR
+            files = []
             try:
-                base = DEFAULT_LOGS_DIR
-                files = [(os.path.getmtime(os.path.join(base, n)), n)
-                         for n in os.listdir(base)
-                         if n.lower().endswith((".csv", ".txt"))
-                         and os.path.isfile(os.path.join(base, n))]
+                for root, _dirs, names in os.walk(base):
+                    for n in names:
+                        if n.lower().endswith((".csv", ".txt")):
+                            full = os.path.join(root, n)
+                            files.append((os.path.getmtime(full), os.path.relpath(full, base), full))
                 files.sort(reverse=True)
             except OSError:
                 files = []
             if not files:
                 self.recent_list.addItem("No logs yet.")
-            for _mt, name in files[:12]:
-                it = QtWidgets.QListWidgetItem(name)
-                it.setData(QtCore.Qt.UserRole, os.path.join(DEFAULT_LOGS_DIR, name))
+            for _mt, rel, full in files[:12]:
+                it = QtWidgets.QListWidgetItem(rel.replace(os.sep, " / "))
+                it.setData(QtCore.Qt.UserRole, full)
                 self.recent_list.addItem(it)
 
     class MainWindow(QtWidgets.QMainWindow):

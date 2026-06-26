@@ -50,6 +50,15 @@ def test_chat_roundtrip(tmp_path):
     assert not garage.set_chat(loaded, "NOPE", [])
 
 
+def test_log_folder_name():
+    v = garage.Vehicle(vin="WAUZZZ8K9BA123456", make="Audi", year=2011)
+    assert garage.log_folder_name(v) == "2011_Audi_123456"
+    nick = garage.Vehicle(vin="ABC999", nickname="Track Car")
+    assert garage.log_folder_name(nick).startswith("Track_Car")
+    bare = garage.Vehicle(vin="")
+    assert garage.log_folder_name(bare)  # never empty
+
+
 def test_chat_preserved_on_merge():
     vehicles = [garage.Vehicle(vin="V1", chat=[{"role": "user", "content": "keep"}])]
     garage.add_or_update(vehicles, garage.Vehicle(vin="V1", make="Audi"))

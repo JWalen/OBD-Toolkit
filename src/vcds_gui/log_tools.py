@@ -97,11 +97,14 @@ def make_executor(logs_dir: str, profile: str = "generic", conn_getter=None):
         base = os.path.abspath(logs_dir)
         rows = []
         if os.path.isdir(base):
-            for name in os.listdir(base):
-                full = os.path.join(base, name)
-                if os.path.isfile(full) and name.lower().endswith((".csv", ".txt")):
+            for root, _dirs, names in os.walk(base):
+                for name in names:
+                    if not name.lower().endswith((".csv", ".txt")):
+                        continue
+                    full = os.path.join(root, name)
                     st = os.stat(full)
-                    rows.append({"filename": name, "kind": parse.classify_file(full),
+                    rows.append({"filename": os.path.relpath(full, base),
+                                 "kind": parse.classify_file(full),
                                  "size": st.st_size, "mtime": st.st_mtime})
         rows.sort(key=lambda r: r["mtime"], reverse=True)
         return {"logs_dir": base, "count": len(rows), "files": rows}

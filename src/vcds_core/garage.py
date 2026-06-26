@@ -80,6 +80,25 @@ def add_session(vehicles: List[Vehicle], vin: str, filename: str) -> bool:
     return True
 
 
+def _safe_dirname(name: str) -> str:
+    out = "".join(ch if (ch.isalnum() or ch in " -_") else "_" for ch in name)
+    return "_".join(out.split()).strip("._") or "vehicle"
+
+
+def log_folder_name(vehicle: "Vehicle") -> str:
+    """A filesystem-safe per-vehicle log folder name derived from the VIN.
+
+    e.g. a 2011 Audi (VIN …BA123456) -> ``2011_Audi_123456``; a nickname wins.
+    """
+    if vehicle.nickname:
+        base = vehicle.nickname
+    else:
+        bits = [str(b) for b in (vehicle.year, vehicle.make) if b]
+        base = " ".join(bits) or "vehicle"
+    tail = (vehicle.vin or "").strip()[-6:]
+    return _safe_dirname(f"{base} {tail}" if tail else base)
+
+
 def get_chat(vehicles: List[Vehicle], vin: str) -> List[dict]:
     v = find(vehicles, vin)
     return list(v.chat) if v else []

@@ -25,6 +25,23 @@ def test_list_read_and_diagnose(samples_dir):
     assert diag["findings"]
 
 
+def test_list_logs_includes_subfolders(samples_dir, tmp_path):
+    import os
+    import shutil
+
+    base = tmp_path / "logs"
+    (base / "2011_Audi_123456").mkdir(parents=True)
+    shutil.copy(os.path.join(samples_dir["dir"], "advanced_uds.CSV"),
+                base / "2011_Audi_123456" / "drive.CSV")
+    ex = log_tools.make_executor(str(base))
+    listing = ex("list_logs", {})
+    rels = [f["filename"] for f in listing["files"]]
+    assert any("2011_Audi_123456" in r and r.endswith("drive.CSV") for r in rels)
+    # reading via the relative subpath works
+    out = ex("read_log", {"filename": rels[0]})
+    assert "channels" in out
+
+
 def test_path_traversal_rejected(samples_dir):
     ex = log_tools.make_executor(samples_dir["dir"])
     out = ex("read_log", {"filename": "../../secrets.csv"})

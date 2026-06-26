@@ -111,6 +111,21 @@ def test_logs_dir_is_not_rosstech(monkeypatch):
     assert gui_app._default_logs_dir() == "X:/custom-logs"
 
 
+def test_live_session_dir_per_vehicle(qapp, tmp_path, monkeypatch):
+    from vcds_core import garage
+    gpath = str(tmp_path / "garage.json")
+    garage.save_garage(gpath, [garage.Vehicle(vin="WAUZZZ8K9BA123456", make="Audi", year=2011)])
+
+    win = gui_app.MainWindow()
+    monkeypatch.setattr(gui_app, "DEFAULT_LOGS_DIR", str(tmp_path))
+    win.settings.setValue("garage/active_vin", "WAUZZZ8K9BA123456")
+    d = win.live_tab._session_dir()
+    assert d.endswith("2011_Audi_123456")
+    win.settings.setValue("garage/active_vin", "")
+    assert win.live_tab._session_dir() == str(tmp_path)
+    win.close()
+
+
 def test_markdown_rendering():
     h = gui_app._md_to_html("# Title\n\n- one\n- two\n\n**bold** and `code`")
     assert "<b>Title</b>" in h

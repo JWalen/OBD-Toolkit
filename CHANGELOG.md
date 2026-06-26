@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-06-26
+
+### Added
+- **Per-vehicle log folders.** When a vehicle is active (set from its VIN), live
+  sessions are saved into a subfolder named from the car —
+  e.g. `2011_Audi_123456` — instead of all logs landing in one pile. The
+  Dashboard's recent-logs list and the AI's `list_logs`/`read_log` now look into
+  those subfolders too.
+
 ## [1.5.1] - 2026-06-25
 
 ### Changed
@@ -432,7 +441,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.5.1...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.6.0
 [1.5.1]: https://github.com/JWalen/VAGScanner/releases/tag/v1.5.1
 [1.5.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.5.0
 [1.4.2]: https://github.com/JWalen/VAGScanner/releases/tag/v1.4.2
