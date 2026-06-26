@@ -134,6 +134,105 @@ def test_gemini_tool_loop():
     assert out == "2 logs."
 
 
+class FakeStream:
+    def __init__(self, lines):
+        self._lines = [(line + "\n").encode("utf-8") for line in lines]
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def __iter__(self):
+        return iter(self._lines)
+
+
+def _sse_opener(rounds):
+    """rounds: list of line-lists, one per HTTP call."""
+    it = iter(rounds)
+
+    def opener(req, timeout):
+        return FakeStream(next(it))
+
+    return opener
+
+
+def test_anthropic_stream_text():
+    lines = [
+        'data: {"type":"content_block_start","content_block":{"type":"text"}}',
+        'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello "}}',
+        'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"world"}}',
+        'data: {"type":"content_block_stop"}',
+        'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}',
+    ]
+    deltas = []
+    out = ai.chat("anthropic", "K", "m", "sys", _msgs(),
+                  opener=_sse_opener([lines]), on_delta=deltas.append)
+    assert "".join(deltas) == "Hello world" and out == "Hello world"
+
+
+def test_anthropic_stream_with_tool():
+    r1 = [
+        'data: {"type":"content_block_start","content_block":{"type":"tool_use","id":"t1","name":"list_logs"}}',
+        'data: {"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":"{}"}}',
+        'data: {"type":"content_block_stop"}',
+        'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"}}',
+    ]
+    r2 = [
+        'data: {"type":"content_block_start","content_block":{"type":"text"}}',
+        'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Done."}}',
+        'data: {"type":"content_block_stop"}',
+        'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}',
+    ]
+    seen = {}
+    out = ai.chat("anthropic", "K", "m", "sys", _msgs(), opener=_sse_opener([r1, r2]),
+                  tools=_TOOLS, tool_executor=lambda n, a: seen.setdefault("n", n) or {"ok": 1},
+                  on_delta=lambda c: None)
+    assert seen["n"] == "list_logs" and out == "Done."
+
+
+def test_openai_stream_text_and_tool():
+    text = [
+        'data: {"choices":[{"delta":{"content":"Hi "}}]}',
+        'data: {"choices":[{"delta":{"content":"there"},"finish_reason":null}]}',
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}',
+        "data: [DONE]",
+    ]
+    out = ai.chat("openai", "K", "m", "sys", _msgs(), opener=_sse_opener([text]),
+                  on_delta=lambda c: None)
+    assert out == "Hi there"
+
+    r1 = [
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"list_logs","arguments":""}}]}}]}',
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{}"}}]},"finish_reason":"tool_calls"}]}',
+    ]
+    r2 = ['data: {"choices":[{"delta":{"content":"Done."},"finish_reason":"stop"}]}']
+    seen = {}
+    out = ai.chat("openai", "K", "m", "sys", _msgs(), opener=_sse_opener([r1, r2]),
+                  tools=_TOOLS, tool_executor=lambda n, a: seen.setdefault("n", n) or {"ok": 1},
+                  on_delta=lambda c: None)
+    assert seen["n"] == "list_logs" and out == "Done."
+
+
+def test_gemini_stream_text_and_tool():
+    text = [
+        'data: {"candidates":[{"content":{"parts":[{"text":"Hi "}]}}]}',
+        'data: {"candidates":[{"content":{"parts":[{"text":"there"}]}}]}',
+    ]
+    out = ai.chat("gemini", "K", "m", "sys", _msgs(), opener=_sse_opener([text]),
+                  on_delta=lambda c: None)
+    assert out == "Hi there"
+
+    r1 = ['data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"list_logs","args":{}}}]}}]}']
+    r2 = ['data: {"candidates":[{"content":{"parts":[{"text":"Done."}]}}]}']
+    seen = {}
+    out = ai.chat("gemini", "K", "m", "sys", _msgs(), opener=_sse_opener([r1, r2]),
+                  tools=_TOOLS, tool_executor=lambda n, a: seen.setdefault("n", n) or {"ok": 1},
+                  on_delta=lambda c: None)
+    assert seen["n"] == "list_logs" and out == "Done."
+
+
 def test_providers_have_defaults():
     for prov in ai.PROVIDERS.values():
         assert prov.default_model in prov.models

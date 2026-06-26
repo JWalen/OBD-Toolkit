@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-06-25
+
+### Added
+- **Streaming AI responses** — replies now appear word-by-word as the model
+  types (SSE), for Claude, GPT and Gemini, including while it uses tools.
+- **The assistant can act to troubleshoot.** Its toolbox grew well beyond log
+  browsing: `find_events`, `performance`, `lookup_dtc`, and — when the car is
+  connected in the Live tab — **live tools**: `obd_status`, `read_live_dtcs`,
+  `snapshot_pids`, `vehicle_info`, `readiness`. It's prompted to gather data
+  with these before concluding, so you get an end-to-end diagnosis.
+
 ## [1.2.0] - 2026-06-25
 
 ### Changed
@@ -366,7 +377,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.3.0
 [1.2.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.2.0
 [1.1.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.1.0
 [1.0.1]: https://github.com/JWalen/VAGScanner/releases/tag/v1.0.1

@@ -103,24 +103,30 @@ def chat(
     opener: Optional[Opener] = None,
     tools: Optional[List[dict]] = None,
     tool_executor: Optional[Callable[[str, dict], object]] = None,
-    max_tool_rounds: int = 6,
+    max_tool_rounds: int = 8,
+    on_delta: Optional[Callable[[str], None]] = None,
 ) -> str:
     """Send a chat conversation to a provider and return the assistant's reply.
 
     Args:
         provider_id: One of ``PROVIDERS``.
-        api_key: The provider API key.
-        model: Model id (see ``Provider.models``).
-        system: System prompt (vehicle context).
-        messages: Prior turns as ``{"role", "content"}`` dicts.
-        tools: Optional neutral tool specs (``{name, description, parameters}``)
-            the model may call; ``tool_executor(name, args)`` runs them locally.
+        api_key, model, system, messages: usual chat inputs.
+        tools / tool_executor: optional function-calling tools the model may use.
+        on_delta: optional callback receiving text chunks as they stream in.
+            When set, the response is streamed (SSE).
     """
     if not api_key:
         raise RuntimeError("No API key set for this provider.")
     op = opener or _default_opener
     args = (api_key, model, system, messages, max_tokens, timeout, op, tools,
             tool_executor, max_tool_rounds)
+    if on_delta is not None:
+        if provider_id == "anthropic":
+            return _anthropic_stream(*args, on_delta)
+        if provider_id == "openai":
+            return _openai_stream(*args, on_delta)
+        if provider_id == "gemini":
+            return _gemini_stream(*args, on_delta)
     if provider_id == "anthropic":
         return _anthropic(*args)
     if provider_id == "openai":
@@ -128,6 +134,37 @@ def chat(
     if provider_id == "gemini":
         return _gemini(*args)
     raise ValueError(f"Unknown provider: {provider_id}")
+
+
+def _sse_events(url, headers, payload, opener, timeout):
+    """Yield decoded JSON objects from a Server-Sent-Events POST stream."""
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=data, method="POST",
+        headers={**headers, "Content-Type": "application/json", "Accept": "text/event-stream"})
+    try:
+        resp = opener(req, timeout)
+    except urllib.error.HTTPError as exc:
+        body = ""
+        try:
+            body = exc.read().decode("utf-8", "replace")
+        except Exception:  # noqa: BLE001
+            pass
+        raise RuntimeError(f"{exc.code} {exc.reason}: {body[:400]}") from None
+    with resp:
+        for raw in resp:
+            line = raw.decode("utf-8", "replace") if isinstance(raw, (bytes, bytearray)) else raw
+            line = line.strip()
+            if not line or line.startswith(":") or line.startswith("event:"):
+                continue
+            if line.startswith("data:"):
+                payload_str = line[5:].strip()
+                if payload_str == "[DONE]":
+                    break
+                try:
+                    yield json.loads(payload_str)
+                except ValueError:
+                    continue
 
 
 def _anthropic(api_key, model, system, messages, max_tokens, timeout, opener,
@@ -215,6 +252,146 @@ def _gemini(api_key, model, system, messages, max_tokens, timeout, opener,
             continue
         return "".join(p.get("text", "") for p in parts).strip()
     return "(stopped after tool rounds)"
+
+
+def _anthropic_stream(api_key, model, system, messages, max_tokens, timeout, opener,
+                      tools, executor, rounds, on_delta) -> str:
+    headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01"}
+    spec = [{"name": t["name"], "description": t["description"],
+             "input_schema": t["parameters"]} for t in tools] if tools else None
+    convo = list(messages)
+    all_text = []
+    for _ in range(rounds if (tools and executor) else 1):
+        payload = {"model": model, "max_tokens": max_tokens, "messages": convo, "stream": True}
+        if system:
+            payload["system"] = system
+        if spec:
+            payload["tools"] = spec
+        blocks, cur, stop_reason = [], None, None
+        for ev in _sse_events("https://api.anthropic.com/v1/messages", headers, payload, opener, timeout):
+            t = ev.get("type")
+            if t == "content_block_start":
+                cb = ev.get("content_block", {})
+                cur = {"type": cb.get("type")}
+                if cb.get("type") == "text":
+                    cur["text"] = ""
+                elif cb.get("type") == "tool_use":
+                    cur.update({"id": cb.get("id"), "name": cb.get("name"), "_json": ""})
+            elif t == "content_block_delta":
+                d = ev.get("delta", {})
+                if d.get("type") == "text_delta" and cur is not None:
+                    on_delta(d.get("text", ""))
+                    all_text.append(d.get("text", ""))
+                    cur["text"] = cur.get("text", "") + d.get("text", "")
+                elif d.get("type") == "input_json_delta" and cur is not None:
+                    cur["_json"] = cur.get("_json", "") + d.get("partial_json", "")
+            elif t == "content_block_stop" and cur is not None:
+                if cur.get("type") == "tool_use":
+                    try:
+                        cur["input"] = json.loads(cur.pop("_json", "") or "{}")
+                    except ValueError:
+                        cur["input"] = {}
+                blocks.append(cur)
+                cur = None
+            elif t == "message_delta":
+                stop_reason = ev.get("delta", {}).get("stop_reason") or stop_reason
+        if stop_reason == "tool_use" and executor:
+            convo.append({"role": "assistant", "content": blocks})
+            results = []
+            for b in blocks:
+                if b.get("type") == "tool_use":
+                    out = executor(b.get("name"), b.get("input", {}))
+                    results.append({"type": "tool_result", "tool_use_id": b.get("id"),
+                                    "content": _tool_result_str(out)})
+            convo.append({"role": "user", "content": results})
+            continue
+        break
+    return "".join(all_text).strip()
+
+
+def _openai_stream(api_key, model, system, messages, max_tokens, timeout, opener,
+                   tools, executor, rounds, on_delta) -> str:
+    headers = {"Authorization": f"Bearer {api_key}"}
+    spec = [{"type": "function", "function": {"name": t["name"], "description": t["description"],
+             "parameters": t["parameters"]}} for t in tools] if tools else None
+    convo = ([{"role": "system", "content": system}] if system else []) + list(messages)
+    all_text = []
+    for _ in range(rounds if (tools and executor) else 1):
+        payload = {"model": model, "messages": convo, "max_tokens": max_tokens, "stream": True}
+        if spec:
+            payload["tools"] = spec
+        content, tool_calls, finish = [], {}, None
+        for ev in _sse_events("https://api.openai.com/v1/chat/completions", headers, payload, opener, timeout):
+            choice = (ev.get("choices") or [{}])[0]
+            delta = choice.get("delta", {})
+            if delta.get("content"):
+                on_delta(delta["content"])
+                content.append(delta["content"])
+                all_text.append(delta["content"])
+            for tc in delta.get("tool_calls", []) or []:
+                idx = tc.get("index", 0)
+                slot = tool_calls.setdefault(idx, {"id": "", "name": "", "args": ""})
+                if tc.get("id"):
+                    slot["id"] = tc["id"]
+                fn = tc.get("function", {})
+                if fn.get("name"):
+                    slot["name"] = fn["name"]
+                if fn.get("arguments"):
+                    slot["args"] += fn["arguments"]
+            finish = choice.get("finish_reason") or finish
+        if tool_calls and executor and finish == "tool_calls":
+            ordered = [tool_calls[i] for i in sorted(tool_calls)]
+            convo.append({"role": "assistant", "content": "".join(content) or None,
+                          "tool_calls": [{"id": s["id"], "type": "function",
+                                          "function": {"name": s["name"], "arguments": s["args"] or "{}"}}
+                                         for s in ordered]})
+            for s in ordered:
+                try:
+                    args = json.loads(s["args"] or "{}")
+                except ValueError:
+                    args = {}
+                out = executor(s["name"], args)
+                convo.append({"role": "tool", "tool_call_id": s["id"], "content": _tool_result_str(out)})
+            continue
+        break
+    return "".join(all_text).strip()
+
+
+def _gemini_stream(api_key, model, system, messages, max_tokens, timeout, opener,
+                   tools, executor, rounds, on_delta) -> str:
+    contents = [{"role": "model" if m["role"] == "assistant" else "user",
+                 "parts": [{"text": m["content"]}]} for m in messages]
+    base = {"generationConfig": {"maxOutputTokens": max_tokens}}
+    if system:
+        base["systemInstruction"] = {"parts": [{"text": system}]}
+    if tools:
+        base["tools"] = [{"functionDeclarations": [
+            {"name": t["name"], "description": t["description"], "parameters": t["parameters"]}
+            for t in tools]}]
+    url = (f"https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent"
+           f"?alt=sse&key={api_key}")
+    all_text = []
+    for _ in range(rounds if (tools and executor) else 1):
+        text_parts, calls = [], []
+        for ev in _sse_events(url, {}, {**base, "contents": contents}, opener, timeout):
+            cand = (ev.get("candidates") or [{}])[0]
+            for p in cand.get("content", {}).get("parts", []):
+                if "text" in p:
+                    on_delta(p["text"])
+                    text_parts.append(p["text"])
+                    all_text.append(p["text"])
+                elif "functionCall" in p:
+                    calls.append(p["functionCall"])
+        if calls and executor:
+            contents.append({"role": "model",
+                             "parts": ([{"text": "".join(text_parts)}] if text_parts else [])
+                             + [{"functionCall": c} for c in calls]})
+            contents.append({"role": "user", "parts": [
+                {"functionResponse": {"name": c.get("name"), "response": {"result": executor(c.get("name"), c.get("args", {}))}}}
+                for c in calls]})
+            continue
+        break
+    return "".join(all_text).strip()
 
 
 SYSTEM_PREAMBLE = (

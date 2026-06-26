@@ -2040,6 +2040,7 @@ if _HAVE_QT:
         done = QtCore.Signal(str)
         failed = QtCore.Signal(str)
         tool = QtCore.Signal(str)
+        delta = QtCore.Signal(str)
 
         def __init__(self, provider, key, model, system, messages, tools=None, executor=None):
             super().__init__()
@@ -2061,7 +2062,8 @@ if _HAVE_QT:
 
             try:
                 reply = ai.chat(self.provider, self.key, self.model, self.system, self.messages,
-                                tools=self.tools, tool_executor=(wrapped if ex else None))
+                                tools=self.tools, tool_executor=(wrapped if ex else None),
+                                on_delta=self.delta.emit)
                 self.done.emit(reply)
             except Exception as exc:  # noqa: BLE001
                 self.failed.emit(str(exc))
@@ -2076,6 +2078,7 @@ if _HAVE_QT:
             self._worker = None
             self._pending = None
             self._error = None
+            self._stream_text = ""
             self._build()
             self._load_provider_settings()
 
@@ -2173,14 +2176,18 @@ if _HAVE_QT:
             self.history = []
             self._pending = None
             self._error = None
+            self._stream_text = ""
             self._render()
 
         def _render(self):
-            if not self.history and not self._pending and not self._error:
+            if (not self.history and not self._pending and not self._error
+                    and not self._stream_text):
                 self.conversation.setHtml(
                     "<div style='color:#718096'>Ask the assistant to help diagnose your car. "
-                    "It uses the scan/log open in the File Analyzer tab and can browse your "
-                    "stored logs. Pick a provider, paste an API key, and Save.</div>")
+                    "It uses the scan/log open in the File Analyzer tab, can browse your stored "
+                    "logs, and — when the car is connected in the Live tab — read live DTCs, a "
+                    "PID snapshot, VIN and readiness. Pick a provider, paste an API key, and "
+                    "Save.</div>")
                 return
             blocks = []
             for m in self.history:
@@ -2192,7 +2199,12 @@ if _HAVE_QT:
                     blocks.append(
                         "<div style='border-left:3px solid #00897B;padding-left:8px;margin:10px 0'>"
                         f"<b style='color:#00897B'>Assistant</b><br>{_md_to_html(m['content'])}</div>")
-            if self._pending:
+            if self._stream_text:
+                # live (streaming) reply — plain text for speed; formatted on completion
+                blocks.append(
+                    "<div style='border-left:3px solid #00897B;padding-left:8px;margin:10px 0'>"
+                    f"<b style='color:#00897B'>Assistant</b><br>{_esc_br(self._stream_text)}</div>")
+            if self._pending and not self._stream_text:
                 blocks.append(f"<div style='color:#718096;margin:10px 0'><i>{self._pending}</i></div>")
             if self._error:
                 blocks.append(f"<div style='color:#E53E3E;margin:10px 0'><b>Error:</b> "
@@ -2226,6 +2238,7 @@ if _HAVE_QT:
             self.input.clear()
             self.btn_send.setEnabled(False)
             self._error = None
+            self._stream_text = ""
             self._pending = "Assistant is typing…"
             self._render()
 
@@ -2237,10 +2250,17 @@ if _HAVE_QT:
             if self.chk_tools.isChecked():
                 from vcds_gui import log_tools
                 tools = log_tools.TOOL_SPECS
-                executor = log_tools.make_executor(DEFAULT_LOGS_DIR, prof.id)
-                system += (f"\n\nYou can browse the user's stored logs with the provided tools "
-                           f"(list_logs, read_log, read_autoscan, diagnose_log). The logs folder "
-                           f"is {DEFAULT_LOGS_DIR}. Use them when asked about saved logs.")
+                executor = log_tools.make_executor(
+                    DEFAULT_LOGS_DIR, prof.id,
+                    conn_getter=lambda: getattr(self.main.live_tab, "conn", None))
+                system += (
+                    "\n\nYou have tools to investigate. FILE tools read the user's stored logs "
+                    f"(folder: {DEFAULT_LOGS_DIR}): list_logs, read_log, read_autoscan, "
+                    "diagnose_log, find_events, performance, lookup_dtc. LIVE tools read the "
+                    "connected car when an adapter is plugged in (Live tab): obd_status, "
+                    "read_live_dtcs, snapshot_pids, vehicle_info, readiness. Proactively use "
+                    "these tools to gather data before concluding, and tell the user what you "
+                    "find and the most likely fix.")
 
             self._thread = QtCore.QThread()
             self._worker = AiChatWorker(pid, key, model, system, list(self.history), tools, executor)
@@ -2249,9 +2269,16 @@ if _HAVE_QT:
             self._worker.done.connect(self._on_reply)
             self._worker.failed.connect(self._on_error)
             self._worker.tool.connect(self._on_tool)
+            self._worker.delta.connect(self._on_delta)
             self._worker.done.connect(self._thread.quit)
             self._worker.failed.connect(self._thread.quit)
             self._thread.start()
+
+        @QtCore.Slot(str)
+        def _on_delta(self, chunk):
+            self._pending = None
+            self._stream_text += chunk
+            self._render()
 
         @QtCore.Slot(str)
         def _on_tool(self, name):
@@ -2261,7 +2288,9 @@ if _HAVE_QT:
 
         @QtCore.Slot(str)
         def _on_reply(self, reply):
-            self.history.append({"role": "assistant", "content": reply})
+            text = reply or self._stream_text
+            self.history.append({"role": "assistant", "content": text})
+            self._stream_text = ""
             self._pending = None
             self.btn_send.setEnabled(True)
             self._render()
@@ -2269,6 +2298,7 @@ if _HAVE_QT:
         @QtCore.Slot(str)
         def _on_error(self, msg):
             self._pending = None
+            self._stream_text = ""
             self._error = msg
             self.btn_send.setEnabled(True)
             self._render()

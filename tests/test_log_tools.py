@@ -34,3 +34,40 @@ def test_path_traversal_rejected(samples_dir):
 def test_unknown_tool(samples_dir):
     ex = log_tools.make_executor(samples_dir["dir"])
     assert "error" in ex("nope", {})
+
+
+def test_lookup_events_and_performance(samples_dir):
+    ex = log_tools.make_executor(samples_dir["dir"])
+    assert ex("lookup_dtc", {"code": "P0299"})["severity"] == "high"
+    ev = ex("find_events", {"filename": "advanced_uds.CSV"})
+    assert ev["count"] > 0
+    perf = ex("performance", {"filename": "advanced_uds.CSV"})
+    assert "acceleration" in perf  # no speed channel -> empty list, but no crash
+
+
+class _FakeConn:
+    def get_dtcs(self):
+        return [("P0299", "Underboost")]
+
+    def supported(self):
+        return {"RPM", "SPEED"}
+
+    def status(self):
+        return "Car Connected"
+
+    def protocol(self):
+        return "ISO 15765-4"
+
+
+def test_live_tools_with_connection(samples_dir):
+    ex = log_tools.make_executor(samples_dir["dir"], conn_getter=lambda: _FakeConn())
+    dtcs = ex("read_live_dtcs", {})
+    assert dtcs["dtcs"][0]["code"] == "P0299" and dtcs["dtcs"][0]["severity"] == "high"
+    status = ex("obd_status", {})
+    assert "RPM" in status["supported_pids"]
+
+
+def test_live_tool_without_connection(samples_dir):
+    ex = log_tools.make_executor(samples_dir["dir"], conn_getter=lambda: None)
+    out = ex("read_live_dtcs", {})
+    assert "error" in out and "connect" in out["error"].lower()
