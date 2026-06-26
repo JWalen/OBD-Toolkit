@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-06-26
+
+### Added
+- **Wi-Fi & Bluetooth adapters.** A new **📶 Wi-Fi…** button connects to Wi-Fi
+  ELM327 dongles (e.g. `192.168.0.10:35000`) over `socket://`. Bluetooth adapters
+  work via their paired COM port. Broadens hardware support well beyond USB.
+
 ## [1.6.0] - 2026-06-26
 
 ### Added
@@ -441,7 +448,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.7.0
 [1.6.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.6.0
 [1.5.1]: https://github.com/JWalen/VAGScanner/releases/tag/v1.5.1
 [1.5.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.5.0

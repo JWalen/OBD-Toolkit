@@ -775,15 +775,20 @@ if _HAVE_QT:
             cb = QtWidgets.QHBoxLayout(conn_box)
             self.port_combo = QtWidgets.QComboBox()
             self.port_combo.setEditable(True)
-            self.port_combo.setMinimumWidth(160)
+            self.port_combo.setMinimumWidth(200)
+            self.port_combo.setToolTip(
+                "USB/Bluetooth adapters appear as a COM port (pair Bluetooth first).\n"
+                "Wi-Fi adapters use socket://HOST:PORT — use the Wi-Fi button.")
             self.btn_refresh = QtWidgets.QPushButton("Scan Ports")
+            self.btn_wifi = QtWidgets.QPushButton("📶 Wi-Fi…")
+            self.btn_wifi.setToolTip("Connect to a Wi-Fi ELM327 adapter (e.g. 192.168.0.10:35000)")
             self.baud_combo = QtWidgets.QComboBox()
             self.baud_combo.addItems(["Auto", "38400", "9600", "115200"])
             self.btn_connect = QtWidgets.QPushButton("Connect")
             self.btn_disconnect = QtWidgets.QPushButton("Disconnect")
             self.btn_disconnect.setEnabled(False)
             self.conn_status = QtWidgets.QLabel("Not connected.")
-            for w in (QtWidgets.QLabel("Port:"), self.port_combo, self.btn_refresh,
+            for w in (QtWidgets.QLabel("Port:"), self.port_combo, self.btn_refresh, self.btn_wifi,
                       QtWidgets.QLabel("Baud:"), self.baud_combo,
                       self.btn_connect, self.btn_disconnect):
                 cb.addWidget(w)
@@ -924,6 +929,7 @@ if _HAVE_QT:
 
             # signals
             self.btn_refresh.clicked.connect(self.scan_ports)
+            self.btn_wifi.clicked.connect(self.setup_wifi)
             self.btn_connect.clicked.connect(self.connect_adapter)
             self.btn_disconnect.clicked.connect(self.disconnect_adapter)
             self.btn_add_trig.clicked.connect(self._add_trigger_rule)
@@ -943,6 +949,24 @@ if _HAVE_QT:
         def scan_ports(self):
             self.port_combo.clear()
             self.port_combo.addItems(live.scan_ports())
+            saved = self.settings.value("live/wifi", "", type=str)
+            if saved:
+                self.port_combo.addItem(f"socket://{saved}")
+
+        def setup_wifi(self):
+            saved = self.settings.value("live/wifi", "192.168.0.10:35000", type=str)
+            text, ok = QtWidgets.QInputDialog.getText(
+                self, "Wi-Fi adapter",
+                "Wi-Fi ELM327 address (HOST:PORT):\n"
+                "Common defaults: 192.168.0.10:35000 or 192.168.4.1:35000",
+                QtWidgets.QLineEdit.Normal, saved)
+            text = (text or "").strip()
+            if not ok or not text:
+                return
+            text = text.replace("socket://", "")
+            self.settings.setValue("live/wifi", text)
+            self.port_combo.setEditText(f"socket://{text}")
+            self.conn_status.setText("Wi-Fi address set — press Connect.")
 
         def _baud(self) -> Optional[int]:
             txt = self.baud_combo.currentText()
@@ -1359,7 +1383,10 @@ if _HAVE_QT:
     <h3>Tab 2 &mdash; Live (OBD-II)</h3>
     <ol>
       <li><b>Scan Ports</b>, pick your adapter's port (or type it), choose a baud
-          (Auto, or 38400 / 9600 / 115200 for clones), then <b>Connect</b>.</li>
+          (Auto, or 38400 / 9600 / 115200 for clones), then <b>Connect</b>.
+          USB and <b>Bluetooth</b> adapters show up as a COM port (pair Bluetooth
+          first). For a <b>Wi-Fi</b> adapter, click <b>📶 Wi-Fi…</b> and enter its
+          address (commonly <code>192.168.0.10:35000</code>).</li>
       <li>The supported PIDs appear on the left &mdash; tick the ones to log.</li>
       <li><b>Read DTCs</b> shows stored trouble codes. <b>Clear DTCs…</b> erases
           them and is always behind a confirmation &mdash; it is never automatic.</li>

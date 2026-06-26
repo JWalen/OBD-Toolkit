@@ -111,6 +111,16 @@ def test_logs_dir_is_not_rosstech(monkeypatch):
     assert gui_app._default_logs_dir() == "X:/custom-logs"
 
 
+def test_wifi_button_sets_socket_port(qapp, monkeypatch):
+    win = gui_app.MainWindow()
+    lt = win.live_tab
+    monkeypatch.setattr(gui_app.QtWidgets.QInputDialog, "getText",
+                        lambda *a, **k: ("192.168.4.1:35000", True))
+    lt.setup_wifi()
+    assert lt.port_combo.currentText() == "socket://192.168.4.1:35000"
+    win.close()
+
+
 def test_live_session_dir_per_vehicle(qapp, tmp_path, monkeypatch):
     from vcds_core import garage
     gpath = str(tmp_path / "garage.json")
