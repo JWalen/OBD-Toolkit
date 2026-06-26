@@ -22,6 +22,7 @@ class Vehicle:
     mass_kg: Optional[float] = None
     notes: str = ""
     sessions: List[str] = field(default_factory=list)
+    chat: List[dict] = field(default_factory=list)  # per-vehicle AI conversation
 
     @property
     def label(self) -> str:
@@ -76,4 +77,17 @@ def add_session(vehicles: List[Vehicle], vin: str, filename: str) -> bool:
         return False
     if filename not in v.sessions:
         v.sessions.append(filename)
+    return True
+
+
+def get_chat(vehicles: List[Vehicle], vin: str) -> List[dict]:
+    v = find(vehicles, vin)
+    return list(v.chat) if v else []
+
+
+def set_chat(vehicles: List[Vehicle], vin: str, chat: List[dict]) -> bool:
+    v = find(vehicles, vin)
+    if v is None:
+        return False
+    v.chat = list(chat)
     return True

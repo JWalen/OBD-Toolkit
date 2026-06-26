@@ -2079,6 +2079,7 @@ if _HAVE_QT:
             self._pending = None
             self._error = None
             self._stream_text = ""
+            self._active_vin = None
             self._build()
             self._load_provider_settings()
 
@@ -2118,6 +2119,11 @@ if _HAVE_QT:
                                       "logs folder on its own")
             opts.addWidget(self.chk_tools)
             opts.addStretch(1)
+            self.veh_label = QtWidgets.QLabel("")
+            self.veh_label.setStyleSheet("color:#718096")
+            opts.addWidget(self.veh_label)
+            self.btn_save_chat = QtWidgets.QPushButton("Save chat…")
+            opts.addWidget(self.btn_save_chat)
             self.btn_clear_chat = QtWidgets.QPushButton("Clear chat")
             opts.addWidget(self.btn_clear_chat)
             v.addLayout(opts)
@@ -2139,9 +2145,10 @@ if _HAVE_QT:
             self.btn_save_key.clicked.connect(self._save_key)
             self.btn_send.clicked.connect(self.send)
             self.btn_clear_chat.clicked.connect(self._clear_chat)
+            self.btn_save_chat.clicked.connect(self._save_chat)
             self.input.send_requested.connect(self.send)
 
-            self._render()
+            self.refresh_vehicle()
 
         # -- settings ------------------------------------------------------- #
         def _provider_changed(self):
@@ -2171,13 +2178,73 @@ if _HAVE_QT:
                 "user settings (not encrypted).",
             )
 
+        # -- per-vehicle memory --------------------------------------------- #
+        def _garage_path(self):
+            return os.path.join(DEFAULT_LOGS_DIR, "garage.json")
+
+        def refresh_vehicle(self):
+            """Load the active garage vehicle's saved chat (called when shown)."""
+            vin = self.settings.value("garage/active_vin", "", type=str)
+            if vin == self._active_vin:
+                return
+            self._save_vehicle_chat()  # persist the outgoing vehicle first
+            self._active_vin = vin
+            if vin:
+                veh = garage_mod.find(garage_mod.load_garage(self._garage_path()), vin)
+                self.history = list(veh.chat) if veh else []
+                self.veh_label.setText(f"💬 {veh.label if veh else vin}")
+            else:
+                self.history = []
+                self.veh_label.setText("💬 shared chat (no active vehicle)")
+            self._stream_text = ""
+            self._pending = None
+            self._error = None
+            self._render()
+
+        def _save_vehicle_chat(self):
+            if not self._active_vin:
+                return
+            vehicles = garage_mod.load_garage(self._garage_path())
+            if garage_mod.set_chat(vehicles, self._active_vin, self.history):
+                garage_mod.save_garage(self._garage_path(), vehicles)
+
         # -- chat ----------------------------------------------------------- #
         def _clear_chat(self):
             self.history = []
             self._pending = None
             self._error = None
             self._stream_text = ""
+            self._save_vehicle_chat()
             self._render()
+
+        def _save_chat(self):
+            if not self.history:
+                QtWidgets.QMessageBox.information(self, "Save chat", "The chat is empty.")
+                return
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(
+                self, "Save chat transcript", os.path.join(DEFAULT_LOGS_DIR, "chat.md"),
+                "Markdown (*.md);;Text (*.txt);;HTML (*.html)")
+            if not path:
+                return
+            try:
+                if path.lower().endswith(".html"):
+                    parts = ["<html><head><meta charset='utf-8'></head><body>"]
+                    for m in self.history:
+                        who = "You" if m["role"] == "user" else "Assistant"
+                        body = _esc_br(m["content"]) if m["role"] == "user" else _md_to_html(m["content"])
+                        parts.append(f"<h3>{who}</h3><div>{body}</div>")
+                    parts.append("</body></html>")
+                    data = "".join(parts)
+                else:
+                    data = "\n\n".join(
+                        f"### {'You' if m['role'] == 'user' else 'Assistant'}\n\n{m['content']}"
+                        for m in self.history)
+                with open(path, "w", encoding="utf-8") as fh:
+                    fh.write(data)
+            except Exception as exc:  # noqa: BLE001
+                QtWidgets.QMessageBox.critical(self, "Save failed", str(exc))
+                return
+            QtWidgets.QMessageBox.information(self, "Chat saved", f"Saved to\n{path}")
 
         def _render(self):
             if (not self.history and not self._pending and not self._error
@@ -2293,6 +2360,7 @@ if _HAVE_QT:
             self._stream_text = ""
             self._pending = None
             self.btn_send.setEnabled(True)
+            self._save_vehicle_chat()
             self._render()
 
         @QtCore.Slot(str)
@@ -2683,6 +2751,8 @@ if _HAVE_QT:
             self.tabs.addTab(self.analyzer, "File Analyzer")
             self.tabs.addTab(self.live_tab, "Live (OBD-II)")
             self.tabs.addTab(self.ai_tab, "AI Assistant")
+            self.tabs.currentChanged.connect(
+                lambda *_: self.tabs.currentWidget() is self.ai_tab and self.ai_tab.refresh_vehicle())
 
             self.settings = QtCore.QSettings("DeltaModTech", "VCDS Toolkit")
             self._build_menu()

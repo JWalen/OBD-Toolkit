@@ -48,6 +48,43 @@ def test_ai_tab_builds(qapp):
     win.close()
 
 
+def test_ai_per_vehicle_memory(qapp, tmp_path, monkeypatch):
+    from vcds_core import garage
+    gpath = str(tmp_path / "garage.json")
+    garage.save_garage(gpath, [garage.Vehicle(
+        vin="WAUZZZ8K9BA123456", make="Audi", year=2011, brand_profile="vag",
+        chat=[{"role": "user", "content": "prev"}, {"role": "assistant", "content": "hello"}])])
+
+    win = gui_app.MainWindow()
+    tab = win.ai_tab
+    monkeypatch.setattr(tab, "_garage_path", lambda: gpath)
+    tab.settings.setValue("garage/active_vin", "WAUZZZ8K9BA123456")
+    tab._active_vin = None
+    tab.refresh_vehicle()
+    assert len(tab.history) == 2 and "Audi" in tab.veh_label.text()
+
+    tab.history.append({"role": "user", "content": "new q"})
+    tab._save_vehicle_chat()
+    reloaded = garage.get_chat(garage.load_garage(gpath), "WAUZZZ8K9BA123456")
+    assert reloaded[-1]["content"] == "new q"
+    tab.settings.setValue("garage/active_vin", "")
+    win.close()
+
+
+def test_ai_export_chat(qapp, tmp_path, monkeypatch):
+    win = gui_app.MainWindow()
+    tab = win.ai_tab
+    tab.history = [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "# H\n- a"}]
+    out = str(tmp_path / "chat.md")
+    monkeypatch.setattr(gui_app.QtWidgets.QFileDialog, "getSaveFileName",
+                        lambda *a, **k: (out, "Markdown (*.md)"))
+    monkeypatch.setattr(gui_app.QtWidgets.QMessageBox, "information", lambda *a, **k: None)
+    tab._save_chat()
+    text = open(out, encoding="utf-8").read()
+    assert "### You" in text and "### Assistant" in text and "# H" in text
+    win.close()
+
+
 def test_markdown_rendering():
     h = gui_app._md_to_html("# Title\n\n- one\n- two\n\n**bold** and `code`")
     assert "<b>Title</b>" in h

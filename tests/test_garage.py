@@ -38,3 +38,19 @@ def test_add_session(tmp_path):
 
 def test_load_missing_returns_empty(tmp_path):
     assert garage.load_garage(str(tmp_path / "none.json")) == []
+
+
+def test_chat_roundtrip(tmp_path):
+    path = str(tmp_path / "g.json")
+    vehicles = [garage.Vehicle(vin="V1")]
+    assert garage.set_chat(vehicles, "V1", [{"role": "user", "content": "hi"}])
+    garage.save_garage(path, vehicles)
+    loaded = garage.load_garage(path)
+    assert garage.get_chat(loaded, "V1") == [{"role": "user", "content": "hi"}]
+    assert not garage.set_chat(loaded, "NOPE", [])
+
+
+def test_chat_preserved_on_merge():
+    vehicles = [garage.Vehicle(vin="V1", chat=[{"role": "user", "content": "keep"}])]
+    garage.add_or_update(vehicles, garage.Vehicle(vin="V1", make="Audi"))
+    assert garage.get_chat(vehicles, "V1") == [{"role": "user", "content": "keep"}]

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-06-25
+
+### Added
+- **Save chat transcript** — export the conversation to Markdown, plain text or
+  HTML ("Save chat…" in the AI tab).
+- **Per-vehicle chat memory** — the assistant's conversation is now tied to the
+  **active garage vehicle**: switching the active vehicle loads that car's saved
+  chat, and replies are remembered per car across sessions (stored in the
+  garage). A label shows whose chat you're in.
+
 ## [1.3.0] - 2026-06-25
 
 ### Added
@@ -377,7 +387,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.4.0
 [1.3.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.3.0
 [1.2.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.2.0
 [1.1.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.1.0
