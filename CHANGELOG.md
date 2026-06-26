@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.20.0] - 2026-06-26
+
+### Added
+- **Timing chain / belt stretch check.** Diagnosis now flags the classic
+  **cam-to-crank correlation** codes (P0008/P0009/P0016–P0019, incl. when VCDS
+  lists them in the status detail) as a clear **"Possible timing chain / belt
+  stretch"** finding with the right causes (worn chain/guides/tensioner, jumped
+  belt, VVT actuator, cam/crank sensor). It also flags a **large camshaft-timing
+  deviation** from a measuring log. Surfaces in Diagnose, live DTC reads and the
+  AI assistant.
+
 ## [1.19.0] - 2026-06-26
 
 ### Added
@@ -571,7 +582,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.19.0...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.20.0...HEAD
+[1.20.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.20.0
 [1.19.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.19.0
 [1.18.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.18.0
 [1.17.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.17.0

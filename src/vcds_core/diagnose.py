@@ -111,6 +111,58 @@ def _fault_findings(scan: AutoScan, profile: Profile) -> List[Finding]:
     return out
 
 
+# Cam-to-crank correlation / engine-position codes — the classic signature of a
+# stretched timing chain (or a jumped/worn belt). Brand variants resolve to these.
+_TIMING_CODES = {"P0008", "P0009", "P0016", "P0017", "P0018", "P0019"}
+
+
+def _timing_findings(scan: Optional[AutoScan], log: Optional[MeasuringLog]) -> List[Finding]:
+    """Dedicated timing chain/belt stretch check (correlation DTCs + cam deviation)."""
+    out: List[Finding] = []
+
+    found = set()
+    if scan is not None:
+        for module in scan.modules:
+            for fault in module.faults:
+                for src in (fault.code or "", fault.status_detail or ""):
+                    m = _PCODE_RE.search(src)
+                    if m and m.group(1).upper() in _TIMING_CODES:
+                        found.add(m.group(1).upper())
+    if found:
+        out.append(Finding(
+            "high", "Possible timing chain / belt stretch",
+            "Cam-to-crank correlation fault(s) stored (" + ", ".join(sorted(found)) + "). "
+            "This is the classic signature of a stretched/worn timing chain (with worn guides or a "
+            "weak tensioner) or a jumped/worn timing belt. A failed VVT actuator/phaser or a cam/"
+            "crank sensor can mimic it — confirm by comparing actual-vs-specified camshaft timing "
+            "and inspecting the chain stretch/tensioner.",
+            "fault",
+            ["Stretched timing chain + worn guides/tensioner", "Jumped or worn timing belt",
+             "Failed VVT actuator/phaser or solenoid", "Cam/crank position sensor or reluctor ring"],
+            evidence=", ".join(sorted(found)), code=sorted(found)[0]))
+
+    # Measuring-log: a large camshaft-timing *deviation* points the same way.
+    if log is not None:
+        for ch in log.channels:
+            n = ch.name.lower()
+            if "cam" not in n:
+                continue
+            if not any(k in n for k in ("deviation", "timing error", "correlation",
+                                        "timing dev", "angle error", "offset")):
+                continue
+            dev = max(abs(ch.max or 0.0), abs(ch.min or 0.0))
+            if dev >= 6.0:
+                out.append(Finding(
+                    "high", "Camshaft timing deviation high",
+                    f"{ch.name} reached {dev:.1f}{_u(ch)} — a large cam-timing deviation can indicate "
+                    "a stretched timing chain or jumped belt. Also check the VVT actuator and that "
+                    "oil supply/pressure to the cam phaser is good.", "data",
+                    ["Stretched timing chain / belt", "VVT actuator / phaser",
+                     "Low oil pressure to the cam phaser"],
+                    evidence=f"{ch.name} {dev:.1f}{_u(ch)}"))
+    return out
+
+
 def _chan_max(log: MeasuringLog, *substrings):
     for s in substrings:
         ch = log.channel(s)
@@ -279,6 +331,7 @@ def diagnose(scan: Optional[AutoScan] = None, log: Optional[MeasuringLog] = None
         findings.extend(_fault_findings(scan, prof))
     if log is not None:
         findings.extend(_data_findings(log, prof))
+    findings.extend(_timing_findings(scan, log))  # timing chain/belt stretch check
 
     findings.sort(key=lambda f: (-f.severity_rank, f.category, f.title))
 
