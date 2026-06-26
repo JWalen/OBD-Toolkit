@@ -2026,18 +2026,21 @@ if _HAVE_QT:
         done = QtCore.Signal(str)
         failed = QtCore.Signal(str)
 
-        def __init__(self, provider, key, model, system, messages):
+        def __init__(self, provider, key, model, system, messages, tools=None, executor=None):
             super().__init__()
             self.provider = provider
             self.key = key
             self.model = model
             self.system = system
             self.messages = messages
+            self.tools = tools
+            self.executor = executor
 
         @QtCore.Slot()
         def run(self):
             try:
-                reply = ai.chat(self.provider, self.key, self.model, self.system, self.messages)
+                reply = ai.chat(self.provider, self.key, self.model, self.system, self.messages,
+                                tools=self.tools, tool_executor=self.executor)
                 self.done.emit(reply)
             except Exception as exc:  # noqa: BLE001
                 self.failed.emit(str(exc))
@@ -2083,6 +2086,11 @@ if _HAVE_QT:
             self.chk_context = QtWidgets.QCheckBox("Include current scan/log data as context")
             self.chk_context.setChecked(True)
             opts.addWidget(self.chk_context)
+            self.chk_tools = QtWidgets.QCheckBox("Let the AI browse stored logs")
+            self.chk_tools.setChecked(True)
+            self.chk_tools.setToolTip("The assistant can list, read and diagnose logs in your "
+                                      "logs folder on its own")
+            opts.addWidget(self.chk_tools)
             opts.addStretch(1)
             self.btn_clear_chat = QtWidgets.QPushButton("Clear chat")
             opts.addWidget(self.btn_clear_chat)
@@ -2187,8 +2195,18 @@ if _HAVE_QT:
             prof = profiles.get_profile(
                 self.settings.value("ui/profile", profiles.DEFAULT_PROFILE, type=str))
             system = ai.vehicle_system_prompt(self._build_context(), persona=prof.ai_persona)
+
+            tools = executor = None
+            if self.chk_tools.isChecked():
+                from vcds_gui import log_tools
+                tools = log_tools.TOOL_SPECS
+                executor = log_tools.make_executor(DEFAULT_LOGS_DIR, prof.id)
+                system += (f"\n\nYou can browse the user's stored logs with the provided tools "
+                           f"(list_logs, read_log, read_autoscan, diagnose_log). The logs folder "
+                           f"is {DEFAULT_LOGS_DIR}. Use them when asked about saved logs.")
+
             self._thread = QtCore.QThread()
-            self._worker = AiChatWorker(pid, key, model, system, list(self.history))
+            self._worker = AiChatWorker(pid, key, model, system, list(self.history), tools, executor)
             self._worker.moveToThread(self._thread)
             self._thread.started.connect(self._worker.run)
             self._worker.done.connect(self._on_reply)

@@ -82,6 +82,58 @@ def test_http_error_is_surfaced():
         ai.chat("anthropic", "K", "m", "", _msgs(), opener=opener)
 
 
+_TOOLS = [{"name": "list_logs", "description": "list logs",
+           "parameters": {"type": "object", "properties": {}, "required": []}}]
+
+
+def _seq_opener(responses):
+    it = iter(responses)
+
+    def opener(req, timeout):
+        return FakeResp(next(it))
+
+    return opener
+
+
+def test_anthropic_tool_loop():
+    opener = _seq_opener([
+        {"stop_reason": "tool_use",
+         "content": [{"type": "tool_use", "id": "t1", "name": "list_logs", "input": {}}]},
+        {"stop_reason": "end_turn", "content": [{"type": "text", "text": "You have 2 logs."}]},
+    ])
+    seen = {}
+
+    def executor(name, args):
+        seen["name"] = name
+        return {"count": 2}
+
+    out = ai.chat("anthropic", "K", "m", "sys", _msgs(), opener=opener,
+                  tools=_TOOLS, tool_executor=executor)
+    assert out == "You have 2 logs." and seen["name"] == "list_logs"
+
+
+def test_openai_tool_loop():
+    opener = _seq_opener([
+        {"choices": [{"message": {"role": "assistant", "content": None, "tool_calls": [
+            {"id": "c1", "type": "function",
+             "function": {"name": "list_logs", "arguments": "{}"}}]}}]},
+        {"choices": [{"message": {"role": "assistant", "content": "2 logs."}}]},
+    ])
+    out = ai.chat("openai", "K", "m", "sys", _msgs(), opener=opener,
+                  tools=_TOOLS, tool_executor=lambda n, a: {"count": 2})
+    assert out == "2 logs."
+
+
+def test_gemini_tool_loop():
+    opener = _seq_opener([
+        {"candidates": [{"content": {"parts": [{"functionCall": {"name": "list_logs", "args": {}}}]}}]},
+        {"candidates": [{"content": {"parts": [{"text": "2 logs."}]}}]},
+    ])
+    out = ai.chat("gemini", "K", "m", "sys", _msgs(), opener=opener,
+                  tools=_TOOLS, tool_executor=lambda n, a: {"count": 2})
+    assert out == "2 logs."
+
+
 def test_providers_have_defaults():
     for prov in ai.PROVIDERS.values():
         assert prov.default_model in prov.models

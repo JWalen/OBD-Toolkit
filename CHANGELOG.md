@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-06-25
+
+### Added
+- **The AI assistant can now browse your stored logs.** With "Let the AI browse
+  stored logs" enabled (default), the assistant gets function-calling tools —
+  `list_logs`, `read_log`, `read_autoscan`, `diagnose_log` — confined to your
+  logs folder, so you can ask things like *"which of my saved logs shows the
+  worst boost drop?"* or *"diagnose the newest Auto-Scan."* Works with Claude,
+  GPT and Gemini.
+
 ## [1.0.1] - 2026-06-25
 
 ### Fixed
@@ -347,7 +357,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/JWalen/VAGScanner/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.1.0
 [1.0.1]: https://github.com/JWalen/VAGScanner/releases/tag/v1.0.1
 [1.0.0]: https://github.com/JWalen/VAGScanner/releases/tag/v1.0.0
 [0.21.0]: https://github.com/JWalen/VAGScanner/releases/tag/v0.21.0
