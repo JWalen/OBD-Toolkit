@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.25.1] - 2026-06-26
+
+### Added
+- **Project license: GPL-2.0-or-later** (`LICENSE`). Chosen so the app can bundle
+  GPL-2.0 python-OBD for the live ELM327 path and be distributed legitimately;
+  `pyproject` metadata and README updated to match.
+
 ## [1.25.0] - 2026-06-26
 
 ### Changed
@@ -638,7 +645,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/OBD-Toolkit/compare/v1.25.0...HEAD
+[Unreleased]: https://github.com/JWalen/OBD-Toolkit/compare/v1.25.1...HEAD
+[1.25.1]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.25.1
 [1.25.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.25.0
 [1.24.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.24.0
 [1.23.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.23.0

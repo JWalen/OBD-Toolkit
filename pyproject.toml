@@ -4,13 +4,19 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vcds-toolkit"
-version = "1.25.0"
+version = "1.25.1"
 description = "Analyze VCDS measuring logs & Auto-Scans and capture live ELM327 OBD-II data, surfaced via an MCP server and a desktop GUI."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = { text = "GPL-2.0-or-later" }
 authors = [{ name = "DeltaModTech" }]
 keywords = ["vcds", "vag", "audi", "obd2", "elm327", "ross-tech", "mcp"]
+classifiers = [
+    "License :: OSI Approved :: GNU General Public License v2 or later (GPLv2+)",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+]
 
 # vcds_core is intentionally dependency-free; nothing here is needed to parse files.
 dependencies = []

@@ -292,4 +292,13 @@ vcds-toolkit/
 
 ## License
 
-MIT
+**GPL-2.0-or-later.** See [`LICENSE`](LICENSE) for the full text.
+
+This project bundles **python-OBD**, which is **GPL-2.0**; distributing the app
+therefore requires a GPL-compatible license, so the project is licensed under the
+GNU General Public License v2 (or later). Bundled-component licenses are listed in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
+Copyright © DeltaModTech. This program is free software; you can redistribute it
+and/or modify it under the terms of the GNU GPL as published by the Free Software
+Foundation. It is distributed WITHOUT ANY WARRANTY; see the LICENSE for details.
