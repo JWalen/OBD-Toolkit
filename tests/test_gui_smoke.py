@@ -252,6 +252,27 @@ def test_live_data_window(qapp):
     win.close()
 
 
+def test_popout_windows_are_closable(qapp):
+    # Regression: LiveDataWindow opened as a frameless child with no close button.
+    from vcds_obd import live
+    chans = live.build_channels({"RPM", "COOLANT_TEMP"})
+    win_flag = gui_app.QtCore.Qt.Window
+    ld = gui_app.LiveDataWindow(chans)
+    assert ld.windowFlags() & win_flag  # real top-level window (title bar + close)
+    ld.close()
+    g = gui_app.GaugeWindow(chans, gui_app.units.AS_LOGGED)
+    assert g.windowFlags() & win_flag
+    g.close()
+
+
+def test_shutdown_cleans_up(qapp):
+    win = gui_app.MainWindow()
+    lt = win.live_tab
+    lt._shutdown()  # safe with nothing running; clears window refs
+    assert lt._livedata is None and lt._gauges is None
+    win.close()  # MainWindow.closeEvent delegates to _shutdown without crashing
+
+
 def test_live_tab_has_livedata_button(qapp):
     win = gui_app.MainWindow()
     assert win.live_tab.btn_livedata is not None

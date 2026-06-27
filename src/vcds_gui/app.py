@@ -959,6 +959,7 @@ if _HAVE_QT:
 
         def __init__(self, channels, parent=None):
             super().__init__(parent)
+            self.setWindowFlag(QtCore.Qt.Window)  # real top-level window (title bar + close)
             self.setWindowTitle("Live Data")
             self.resize(560, 640)
             self._channels = list(channels)
@@ -1357,9 +1358,18 @@ if _HAVE_QT:
             self._set_connected(True)
             self._start_identify()
 
+        @staticmethod
+        def _wait_thread(t, ms=3000):
+            """Stop and join a QThread so it can't be GC'd while still running."""
+            if t is not None and t.isRunning():
+                t.quit()
+                t.wait(ms)
+
         def _start_identify(self):
             if self.conn is None or not hasattr(self.conn, "identify"):
                 return
+            # Don't reassign over a still-running identify thread (would crash on GC).
+            self._wait_thread(getattr(self, "_id_thread", None), 2000)
             self._id_thread = QtCore.QThread()
             self._id_worker = IdentifyWorker(self.conn)
             self._id_worker.moveToThread(self._id_thread)
@@ -1495,6 +1505,11 @@ if _HAVE_QT:
                 self._load_presets()
 
         def disconnect_adapter(self):
+            # Stop anything using the connection BEFORE closing it.
+            if self.logger is not None:
+                self.logger.stop()
+            self._wait_thread(getattr(self, "thread", None))
+            self._wait_thread(getattr(self, "_id_thread", None), 2000)
             if self._livedata is not None:
                 self._livedata.stop_poll()
                 self._livedata.close()
@@ -1652,7 +1667,7 @@ if _HAVE_QT:
                 return
             # The logger owns the connection during a session — pause the
             # free-running Live Data poller; it'll update from the sample stream.
-            if self._livedata is not None and self._livedata.isVisible():
+            if self._livedata is not None:
                 self._livedata.stop_poll()
                 self._livedata.status.setText("Streaming from the active recording…")
             channels = self._selected_channels()
@@ -1686,6 +1701,26 @@ if _HAVE_QT:
             if self.logger is not None:
                 self.logger.stop()
 
+        def _shutdown(self):
+            """Stop every worker thread and pop-out window so the app exits cleanly."""
+            try:
+                if self.logger is not None:
+                    self.logger.stop()
+            except Exception:  # noqa: BLE001
+                pass
+            self._wait_thread(getattr(self, "thread", None))
+            self._wait_thread(getattr(self, "_id_thread", None), 2000)
+            for attr in ("_livedata", "_gauges"):
+                w = getattr(self, attr, None)
+                if w is not None:
+                    try:
+                        if hasattr(w, "stop_poll"):
+                            w.stop_poll()
+                        w.close()
+                    except Exception:  # noqa: BLE001
+                        pass
+                    setattr(self, attr, None)
+
         def open_gauges(self):
             channels = self._selected_channels()
             if not channels:
@@ -1693,6 +1728,8 @@ if _HAVE_QT:
                     self, "Gauges", "Connect and select at least one PID first.")
                 return
             system = self.settings.value("ui/units", units.AS_LOGGED, type=str)
+            if self._gauges is not None:
+                self._gauges.close()      # don't leak the previous gauge window
             self._gauges = GaugeWindow(channels, system, self)
             self._gauges.set_thresholds(self.trigger_rules)
             self._gauges.show()
@@ -1709,6 +1746,9 @@ if _HAVE_QT:
                 return
             if getattr(self.conn, "is_async", False):
                 self.conn.rewatch([ch.command_name for ch in channels if ch.command_name])
+            if self._livedata is not None:      # don't leave a second poller running
+                self._livedata.stop_poll()
+                self._livedata.close()
             self._livedata = LiveDataWindow(channels, self)
             # Free-run its own poller only when not recording (shared connection).
             if self.logger is None or not self.btn_stop.isEnabled():
@@ -4187,6 +4227,15 @@ if _HAVE_QT:
                 b.setIcon(_svg_icon(k, accent if k == cur else muted))
             for k, b in self._nav_action.items():
                 b.setIcon(_svg_icon(k, muted))
+
+        def closeEvent(self, event):
+            # Tear down live worker threads / pop-out windows so we don't get a
+            # "QThread destroyed while still running" crash on exit.
+            try:
+                self.live_tab._shutdown()
+            except Exception:  # noqa: BLE001
+                pass
+            super().closeEvent(event)
 
         def show_page(self, key: str):
             idx = self._page_index.get(key)

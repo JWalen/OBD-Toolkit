@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.25.2] - 2026-06-27
+
+### Fixed
+- **The Live Data window couldn't be closed** — it opened as a frameless child
+  widget with no title bar; it's now a proper top-level window.
+- **Thread/window lifecycle hardening** (from a full GUI review):
+  - the app now **cleans up live worker threads on exit** (`MainWindow.closeEvent`
+    → `LiveTab._shutdown`), preventing a possible "QThread destroyed while still
+    running" crash when quitting mid-session;
+  - **reconnecting no longer reassigns a still-running identify thread**;
+  - **Disconnect** now stops a running recording before closing the connection;
+  - opening **Gauges / Live Data** again closes the previous window (no leaked
+    windows or duplicate pollers on one adapter).
+
 ## [1.25.1] - 2026-06-26
 
 ### Added
@@ -645,7 +659,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/OBD-Toolkit/compare/v1.25.1...HEAD
+[Unreleased]: https://github.com/JWalen/OBD-Toolkit/compare/v1.25.2...HEAD
+[1.25.2]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.25.2
 [1.25.1]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.25.1
 [1.25.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.25.0
 [1.24.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.24.0
