@@ -170,8 +170,11 @@ def run_obd_session_impl(
         if not channels:
             return {"connected": True, "error": "No supported OBD-II PIDs reported by the ECU."}
         logger = live.LiveLogger(conn, channels, logs_dir)
-        result = logger.run(duration_s, trigger=live.Trigger.from_obj(trigger))
-        return {
+        try:
+            result = logger.run(duration_s, trigger=live.Trigger.from_obj(trigger))
+        except Exception as exc:  # noqa: BLE001
+            return {"connected": True, "error": f"Session failed: {exc}"}
+        out = {
             "connected": True,
             "filename": os.path.basename(result.session_file),
             "sample_count": result.sample_count,
@@ -188,6 +191,9 @@ def run_obd_session_impl(
                 for cap in result.captures
             ],
         }
+        if result.error:
+            out["error"] = f"Session ended early: {result.error} (partial log saved)."
+        return out
     finally:
         _close(conn)
 

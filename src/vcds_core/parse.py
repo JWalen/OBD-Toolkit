@@ -262,10 +262,31 @@ def parse_measuring_log(path: str, max_points: int = 2000) -> MeasuringLog:
     if data_start is None:
         raise ValueError("No numeric data region found in measuring log.")
 
+    def _blank(r):
+        return not any(c.strip() for c in r)
+
+    # Extend across the numeric data region. VCDS and many OBD tools emit blank
+    # separator rows mid-capture — bridge those (when numeric data resumes after
+    # the gap) instead of truncating the whole rest of the log at the first blank.
     data_end = data_start
-    while data_end < len(rows) and (numeric_flags[data_end] or _is_numeric_row(rows[data_end])):
-        data_end += 1
-    data_rows = rows[data_start:data_end]
+    bridged = False
+    while data_end < len(rows):
+        if numeric_flags[data_end] or _is_numeric_row(rows[data_end]):
+            data_end += 1
+            continue
+        if _blank(rows[data_end]):
+            j = data_end + 1
+            while j < len(rows) and _blank(rows[j]):
+                j += 1
+            if j < len(rows) and (numeric_flags[j] or _is_numeric_row(rows[j])):
+                data_end = j  # skip the blank gap; data continues
+                bridged = True
+                continue
+        break  # a genuine non-numeric, non-blank row ends the data region
+    if bridged:
+        notes.append("Bridged blank separator row(s) within the data region.")
+    # Drop blank rows so the column series build cleanly.
+    data_rows = [r for r in rows[data_start:data_end] if not _blank(r)]
 
     # --- header rows: the CONTIGUOUS non-empty rows just above the data
     #     region (a blank line separates them from any date banner above). --- #

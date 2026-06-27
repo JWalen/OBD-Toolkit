@@ -280,19 +280,35 @@ def _data_findings(log: MeasuringLog, profile: Profile) -> List[Finding]:
     return out
 
 
+_DIV_QUALIFIERS = ("specified", "requested", "target", "desired", "actual",
+                   "bank 1", "bank 2", "b1", "b2")
+
+
+def _div_base(name: str) -> str:
+    """Strip spec/actual/bank qualifiers so two channels of the SAME quantity match."""
+    n = name.lower()
+    for w in _DIV_QUALIFIERS:
+        n = n.replace(w, " ")
+    return re.sub(r"[^a-z0-9]+", " ", n).strip()
+
+
 def _divergence_finding(log: MeasuringLog, issues: dict) -> Optional[Finding]:
-    # Boost/charge-pressure target-vs-actual. Camshaft spec/actual pairs are
-    # handled by the dedicated timing check, so skip "cam" channels here.
+    # Boost/charge-pressure target-vs-actual ONLY (this finding's causes are
+    # boost-specific). Camshaft spec/actual pairs are handled by the timing check.
+    _BOOST = ("boost", "charge", "manifold", "intake pressure", "map ")
     spec = actual = None
     for c in log.channels:
         n = c.name.lower()
-        if "cam" in n:
+        if "cam" in n or not any(b in n for b in _BOOST):
             continue
         if spec is None and any(k in n for k in ("specified", "requested", "target", "desired")):
             spec = c
         if actual is None and "actual" in n:
             actual = c
-    if not (spec and actual):
+    # Require the two channels to describe the SAME physical quantity, otherwise
+    # we'd compare e.g. "Specified torque" vs "Actual intake pressure" and emit a
+    # bogus boost-leak finding.
+    if not (spec and actual) or _div_base(spec.name) != _div_base(actual.name):
         return None
     s = log.raw_series.get(spec.name)
     a = log.raw_series.get(actual.name)

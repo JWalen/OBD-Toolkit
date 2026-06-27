@@ -98,7 +98,7 @@ def chat(
     model: str,
     system: str,
     messages: List[Message],
-    max_tokens: int = 1024,
+    max_tokens: int = 4096,
     timeout: float = 90,
     opener: Optional[Opener] = None,
     tools: Optional[List[dict]] = None,
@@ -196,6 +196,14 @@ def _anthropic(api_key, model, system, messages, max_tokens, timeout, opener,
     return "(stopped after tool rounds)"
 
 
+def _openai_token_param(model: str, n: int) -> dict:
+    """o-series reasoning models (o1/o3/o4…) reject `max_tokens` (400) and want
+    `max_completion_tokens`; everything else uses `max_tokens`."""
+    m = (model or "").lower()
+    key = "max_completion_tokens" if (m[:1] == "o" and m[1:2].isdigit()) else "max_tokens"
+    return {key: n}
+
+
 def _openai(api_key, model, system, messages, max_tokens, timeout, opener,
             tools, executor, rounds) -> str:
     headers = {"Authorization": f"Bearer {api_key}"}
@@ -203,7 +211,7 @@ def _openai(api_key, model, system, messages, max_tokens, timeout, opener,
     spec = [{"type": "function", "function": {"name": t["name"], "description": t["description"],
              "parameters": t["parameters"]}} for t in tools] if tools else None
     for _ in range(rounds if (tools and executor) else 1):
-        payload = {"model": model, "messages": convo, "max_tokens": max_tokens}
+        payload = {"model": model, "messages": convo, **_openai_token_param(model, max_tokens)}
         if spec:
             payload["tools"] = spec
         data = _post_json("https://api.openai.com/v1/chat/completions", headers, payload, opener, timeout)
@@ -317,7 +325,8 @@ def _openai_stream(api_key, model, system, messages, max_tokens, timeout, opener
     convo = ([{"role": "system", "content": system}] if system else []) + list(messages)
     all_text = []
     for _ in range(rounds if (tools and executor) else 1):
-        payload = {"model": model, "messages": convo, "max_tokens": max_tokens, "stream": True}
+        payload = {"model": model, "messages": convo, "stream": True,
+                   **_openai_token_param(model, max_tokens)}
         if spec:
             payload["tools"] = spec
         content, tool_calls, finish = [], {}, None
@@ -339,7 +348,9 @@ def _openai_stream(api_key, model, system, messages, max_tokens, timeout, opener
                 if fn.get("arguments"):
                     slot["args"] += fn["arguments"]
             finish = choice.get("finish_reason") or finish
-        if tool_calls and executor and finish == "tool_calls":
+        # Some OpenAI-compatible proxies report finish_reason 'stop' even with
+        # tool_calls present — trigger on the calls themselves (match non-stream).
+        if tool_calls and executor:
             ordered = [tool_calls[i] for i in sorted(tool_calls)]
             convo.append({"role": "assistant", "content": "".join(content) or None,
                           "tool_calls": [{"id": s["id"], "type": "function",

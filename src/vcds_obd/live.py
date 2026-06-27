@@ -235,12 +235,15 @@ _OPS = {
 
 def _threshold_hit(trigger: Trigger, values: Dict[str, Optional[float]]) -> Optional[str]:
     for rule in trigger.thresholds:
-        chan_q = str(rule.get("channel", "")).lower()
+        chan_q = str(rule.get("channel", "")).strip().lower()
         op = rule.get("op", ">")
-        thr = float(rule.get("value"))
         fn = _OPS.get(op)
         if fn is None:
             continue
+        try:
+            thr = float(rule.get("value"))
+        except (TypeError, ValueError):
+            continue  # skip a malformed rule rather than crash the whole session
         for name, v in values.items():
             if v is None:
                 continue
@@ -311,6 +314,7 @@ class SessionResult:
     channels: List[str]
     dtcs: List[Tuple[str, str]]
     captures: List[CaptureResult] = field(default_factory=list)
+    error: Optional[str] = None  # set if the session ended early on a hard error
 
 
 # --------------------------------------------------------------------------- #
@@ -405,62 +409,69 @@ class LiveLogger:
 
         start = self.clock()
         n = 0
+        run_error: Optional[str] = None
         while True:
             now = self.clock()
             t = now - start
             if t > duration_s or self._stop.is_set():
                 break
 
-            values = read_row(self.conn, self.channels)
-            marker = ""
-            fired_reason: Optional[str] = None
-            fired_kind = ""
+            # A hard error mid-session (adapter unplug, serial drop, bad trigger)
+            # must not lose the recording — break out and write what we have.
+            try:
+                values = read_row(self.conn, self.channels)
+                marker = ""
+                fired_reason: Optional[str] = None
+                fired_kind = ""
 
-            # --- threshold trigger ---
-            if trigger is not None and cap_rows is None and trigger.thresholds:
-                hit = _threshold_hit(trigger, values)
-                if hit:
-                    fired_reason, fired_kind = hit, "threshold"
+                # --- threshold trigger ---
+                if trigger is not None and cap_rows is None and trigger.thresholds:
+                    hit = _threshold_hit(trigger, values)
+                    if hit:
+                        fired_reason, fired_kind = hit, "threshold"
 
-            # --- new-DTC trigger (polled, not every tick) ---
-            if (
-                trigger is not None
-                and cap_rows is None
-                and trigger.on_new_dtc
-                and (t - last_dtc_poll) >= self.dtc_poll_s
-            ):
-                last_dtc_poll = t
-                current = set(self._safe_dtcs())
-                new = current - known_dtcs
-                known_dtcs |= current
-                if new:
-                    code, desc = sorted(new)[0]
-                    fired_reason, fired_kind = f"New DTC {code} ({desc})", "dtc"
+                # --- new-DTC trigger (polled, not every tick) ---
+                if (
+                    trigger is not None
+                    and cap_rows is None
+                    and trigger.on_new_dtc
+                    and (t - last_dtc_poll) >= self.dtc_poll_s
+                ):
+                    last_dtc_poll = t
+                    current = set(self._safe_dtcs())
+                    new = current - known_dtcs
+                    known_dtcs |= current
+                    if new:
+                        code, desc = sorted(new)[0]
+                        fired_reason, fired_kind = f"New DTC {code} ({desc})", "dtc"
 
-            if fired_reason is not None:
-                marker = "TRIGGER"
-                cap_rows = list(ring)  # buffer_before context
-                cap_end = t + self.buffer_after_s
-                cap_name = f"{session_name}_EVENT{len(captures) + 1}_{fired_kind}.CSV"
-                cap_info = CaptureResult(
-                    file=os.path.join(self.logs_dir, cap_name),
-                    trigger_kind=fired_kind,
-                    trigger_time=t,
-                    reason=fired_reason,
-                )
+                if fired_reason is not None:
+                    marker = "TRIGGER"
+                    cap_rows = list(ring)  # buffer_before context
+                    cap_end = t + self.buffer_after_s
+                    cap_name = f"{session_name}_EVENT{len(captures) + 1}_{fired_kind}.CSV"
+                    cap_info = CaptureResult(
+                        file=os.path.join(self.logs_dir, cap_name),
+                        trigger_kind=fired_kind,
+                        trigger_time=t,
+                        reason=fired_reason,
+                    )
 
-            row = (marker, t, values)
-            ring.append(row)
-            all_rows.append(row)
-            if on_sample is not None:
-                on_sample(t, values, marker)
-            if cap_rows is not None:
-                cap_rows.append(row)
-                if t >= cap_end:
-                    write_measuring_csv(cap_info.file, self.channels, cap_rows, self.header_lines)  # type: ignore[arg-type]
-                    captures.append(cap_info)  # type: ignore[arg-type]
-                    cap_rows = None
-                    cap_info = None
+                row = (marker, t, values)
+                ring.append(row)
+                all_rows.append(row)
+                if on_sample is not None:
+                    on_sample(t, values, marker)
+                if cap_rows is not None:
+                    cap_rows.append(row)
+                    if t >= cap_end:
+                        write_measuring_csv(cap_info.file, self.channels, cap_rows, self.header_lines)  # type: ignore[arg-type]
+                        captures.append(cap_info)  # type: ignore[arg-type]
+                        cap_rows = None
+                        cap_info = None
+            except Exception as exc:  # noqa: BLE001 - preserve the recording on any error
+                run_error = str(exc)
+                break
 
             n += 1
             self.sleep(self.period)
@@ -480,6 +491,7 @@ class LiveLogger:
             channels=[c.name for c in self.channels],
             dtcs=final_dtcs,
             captures=captures,
+            error=run_error,
         )
 
     def _safe_dtcs(self) -> List[Tuple[str, str]]:
@@ -704,7 +716,8 @@ class PyOBDConnection:
         if cmd is None:
             return False
         resp = self._one_shot(cmd)
-        return resp is not None
+        # A NULL reply means the ECU never acked mode 04 — don't report success.
+        return resp is not None and not resp.is_null()
 
     def identify(self) -> dict:
         """Everything we can learn about the car on connect: VIN, calibration/ECU

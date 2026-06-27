@@ -168,7 +168,11 @@ def download_installer(
     if not info.installer_url:
         raise ValueError("This release has no installer (.exe) asset.")
     os.makedirs(dest_dir, exist_ok=True)
-    dest = os.path.join(dest_dir, info.installer_name or "VCDS-Toolkit-Setup.exe")
+    # The asset name comes from the release metadata — never trust it as a path.
+    safe_name = os.path.basename(info.installer_name or "") or "OBD-Toolkit-Setup.exe"
+    dest = os.path.join(dest_dir, safe_name)
+    if os.path.realpath(os.path.dirname(dest)) != os.path.realpath(dest_dir):
+        raise ValueError("Refusing to write the installer outside the download folder.")
 
     digest = hashlib.sha256()
     total = info.installer_size or 0

@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.26.0] - 2026-06-27
+
+### Fixed (from a multi-agent functionality/security/UI-UX audit)
+- **Critical: recording could be lost.** A malformed trigger rule or an adapter
+  drop mid-session threw inside the capture loop, and the CSV was only written
+  afterward — losing the whole recording. The loop is now crash-safe (writes what
+  it has on any error), bad trigger rules are skipped, and the MCP
+  `run_obd_session` returns a clean error instead of raising.
+- **Log parser truncated at blank rows.** VCDS emits blank separators mid-capture;
+  the parser stopped at the first one and discarded the rest. It now bridges blank
+  gaps (with a parse note) so the full log is kept.
+- **Fuel economy ignored the speed unit** — mph logs were ~61% off. Now
+  unit-aware (km/h / mph / m/s).
+- **AI replies were hard-capped at ~1024 tokens** (silently truncated); raised the
+  default. **`o4-mini`** now works (uses `max_completion_tokens`). OpenAI
+  streaming tool-calls fire even when a proxy reports `finish_reason: stop`.
+- **Diagnosis no longer pairs unrelated channels** (e.g. "Specified torque" vs
+  "Actual intake pressure") into a bogus boost-leak finding.
+- **`Clear DTCs` no longer reports success** when the ECU never acked (NULL reply).
+- **Security:** the updater sanitizes the downloaded asset name to a basename and
+  refuses to write outside the download folder.
+
 ## [1.25.2] - 2026-06-27
 
 ### Fixed
@@ -659,7 +681,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/OBD-Toolkit/compare/v1.25.2...HEAD
+[Unreleased]: https://github.com/JWalen/OBD-Toolkit/compare/v1.26.0...HEAD
+[1.26.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.26.0
 [1.25.2]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.25.2
 [1.25.1]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.25.1
 [1.25.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.25.0

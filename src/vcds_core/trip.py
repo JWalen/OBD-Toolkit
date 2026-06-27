@@ -55,6 +55,16 @@ def fuel_economy(log: MeasuringLog) -> Optional[FuelEconomy]:
         return None
     t, v = s["time"], s["value"]
 
+    # Convert speed to km/h based on the channel's unit (VCDS logs km/h; generic
+    # OBD/Torque logs are often mph). Without this, mph logs were ~61% off.
+    unit = (speed.unit or "").lower()
+    if "mph" in unit:
+        to_kmh = 1.609344
+    elif "m/s" in unit:
+        to_kmh = 3.6
+    else:
+        to_kmh = 1.0
+
     rate = _find(log, "Fuel Rate")
     maf = _find(log, "MAF")
     rser = log.raw_series.get(rate.name) if rate else None
@@ -69,9 +79,9 @@ def fuel_economy(log: MeasuringLog) -> Optional[FuelEconomy]:
         dt = t[i] - t[i - 1]
         if dt <= 0 or dt > 5:
             continue
-        spd = v[i]
-        if spd is None:
+        if v[i] is None:
             continue
+        spd = v[i] * to_kmh  # km/h
         total += dt
         dist_km += spd / 3600.0 * dt
         if spd < 2:
