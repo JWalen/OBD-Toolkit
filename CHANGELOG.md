@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.28.0] - 2026-06-27
+
+### Fixed (audit round 3 — concurrency & performance)
+- **Serial-port data race (the big one).** The single ELM327 connection was read
+  from up to five threads (live poller, recorder, identify, AI tools, GUI one-shot
+  reads) with no locking, which could corrupt/cross-wire ELM327 responses. Every
+  adapter operation now goes through a per-connection re-entrant lock, so
+  transactions never interleave; closing the port also waits for any in-flight
+  read. A recording also waits for identify to finish before it starts.
+- **Live plot stays smooth on long sessions** — enabled downsampling + clip-to-view
+  (was re-drawing the entire history every sample).
+- **Live Data poller no longer pegs a CPU core** in "as fast as possible" mode
+  (added a small sleep floor + backpressure).
+- **Data table shows the right value per time** — it aligned channels by row index,
+  which mismatched any channel with dropped samples; now aligned by time.
+- **Update threads**: guarded against being relaunched while running and cleaned up
+  after finishing (no leaks / no "destroyed while running" crash).
+
 ## [1.27.0] - 2026-06-27
 
 ### Fixed (audit round 2)
@@ -703,7 +721,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/OBD-Toolkit/compare/v1.27.0...HEAD
+[Unreleased]: https://github.com/JWalen/OBD-Toolkit/compare/v1.28.0...HEAD
+[1.28.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.28.0
 [1.27.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.27.0
 [1.26.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.26.0
 [1.25.2]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.25.2

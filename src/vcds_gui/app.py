@@ -319,6 +319,10 @@ if _HAVE_QT:
             self._color_idx = 0
 
             self.plot = pg.PlotWidget()
+            # Downsample + clip to the visible range so long sessions stay smooth
+            # instead of redrawing every historical point each frame.
+            self.plot.setDownsampling(mode="peak", auto=True)
+            self.plot.setClipToView(True)
             self.pi = self.plot.getPlotItem()
             self.pi.showGrid(x=True, y=True, alpha=0.3)
             self.pi.setLabel("bottom", "Time", units="s")
@@ -668,6 +672,12 @@ if _HAVE_QT:
                     master = t
             cols = ["Time (s)"] + [f"{n} [{units_by.get(n)}]" if units_by.get(n) else n
                                    for n in names]
+            # Build each column's (time, value) arrays ONCE (hoisted out of the
+            # row loop). Channels drop missing rows independently, so look up each
+            # value at the master time rather than by list index (which misaligns).
+            import bisect
+            col_series = [(series.get(n, {}).get("time", []),
+                           series.get(n, {}).get("value", [])) for n in names]
             self.data_table.setUpdatesEnabled(False)
             self.data_table.setColumnCount(len(cols))
             self.data_table.setHorizontalHeaderLabels(cols)
@@ -675,9 +685,17 @@ if _HAVE_QT:
             Item = QtWidgets.QTableWidgetItem
             for i, tv in enumerate(master):
                 self.data_table.setItem(i, 0, Item(f"{tv:g}"))
-                for c, n in enumerate(names, start=1):
-                    vals = series.get(n, {}).get("value", [])
-                    v = vals[i] if i < len(vals) else None
+                for c, (ct, cv) in enumerate(col_series, start=1):
+                    v = None
+                    if ct:
+                        j = bisect.bisect_left(ct, tv)
+                        best = bd = None
+                        for k in (j - 1, j):
+                            if 0 <= k < len(ct):
+                                d = abs(ct[k] - tv)
+                                if bd is None or d < bd:
+                                    bd, best = d, cv[k]
+                        v = best
                     self.data_table.setItem(i, c, Item("" if v is None else f"{v:g}"))
             self.data_table.setUpdatesEnabled(True)
             self.data_table.resizeColumnsToContents()
@@ -949,8 +967,10 @@ if _HAVE_QT:
                 if self._stop:
                     return
                 self.values.emit(dict(snap))
-                if self.interval_ms:
-                    QtCore.QThread.msleep(int(self.interval_ms))
+                # Always sleep a small floor, even in "as fast as possible" mode,
+                # so a cached/async read can't peg a CPU core and flood the event
+                # queue faster than the table can drain.
+                QtCore.QThread.msleep(max(int(self.interval_ms), 25))
 
     class LiveDataWindow(QtWidgets.QWidget):
         """Always-on Live Data table: current value, unit, min/max and trend per PID."""
@@ -1665,6 +1685,8 @@ if _HAVE_QT:
         def start_logging(self):
             if self.conn is None:
                 return
+            # Don't start a recording while identify() is still reading the port.
+            self._wait_thread(getattr(self, "_id_thread", None), 2000)
             # The logger owns the connection during a session — pause the
             # free-running Live Data poller; it'll update from the sample stream.
             if self._livedata is not None:
@@ -4390,6 +4412,9 @@ if _HAVE_QT:
                 self.check_for_updates(manual=False)
 
         def check_for_updates(self, manual: bool = False):
+            prev = getattr(self, "_chk_thread", None)
+            if prev is not None and prev.isRunning():
+                return  # a check is already in flight
             self._update_manual = manual
             self._chk_thread = QtCore.QThread()
             self._chk_worker = UpdateCheckWorker(self._version)
@@ -4400,6 +4425,9 @@ if _HAVE_QT:
             self._chk_worker.failed.connect(self._on_update_failed)
             for sig in (self._chk_worker.found, self._chk_worker.none, self._chk_worker.failed):
                 sig.connect(self._chk_thread.quit)
+            self._chk_worker.found.connect(self._chk_worker.deleteLater)
+            self._chk_worker.none.connect(self._chk_worker.deleteLater)
+            self._chk_worker.failed.connect(self._chk_worker.deleteLater)
             self._chk_thread.start()
 
         @QtCore.Slot(object)
@@ -4438,6 +4466,9 @@ if _HAVE_QT:
                 )
                 self._open_release_notes()
                 return
+            prev = getattr(self, "_dl_thread", None)
+            if prev is not None and prev.isRunning():
+                return  # a download is already in flight
             import tempfile
 
             dest = os.path.join(tempfile.gettempdir(), "vcds_toolkit_update")

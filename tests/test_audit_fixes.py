@@ -143,3 +143,42 @@ def test_clear_dtcs_null_reply_is_failure():
     from vcds_obd import live
     assert live.PyOBDConnection(conn=_Conn(True), obd_module=_Obd, is_async=False).clear_dtcs() is False
     assert live.PyOBDConnection(conn=_Conn(False), obd_module=_Obd, is_async=False).clear_dtcs() is True
+
+
+def test_raw_connection_serializes_concurrent_transactions():
+    # The single serial handle must not be written to by two threads at once.
+    import threading
+    import time
+
+    from vcds_obd import live
+
+    class FakeSer:
+        def __init__(self):
+            self.inside = False
+            self.violation = False
+
+        def reset_input_buffer(self):
+            pass
+
+        def write(self, b):
+            if self.inside:           # another transaction is mid-flight
+                self.violation = True
+            self.inside = True
+
+        def read_until(self, term):
+            time.sleep(0.001)          # widen the interleaving window
+            self.inside = False
+            return b"41 00 00 00 00 00>"
+
+        def close(self):
+            pass
+
+    fs = FakeSer()
+    conn = live.RawELM327Connection(serial_obj=fs)
+    threads = [threading.Thread(target=lambda: [conn._transact("01 0C") for _ in range(15)])
+               for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert not fs.violation  # the RLock serialized every write+read

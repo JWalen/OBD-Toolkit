@@ -549,6 +549,9 @@ class PyOBDConnection:
 
             self._obd = obd
         self._watching = False
+        # One serial port, many callers (poller, logger, identify, AI tools, GUI
+        # one-shots). Serialize every adapter op so transactions never interleave.
+        self._lock = threading.RLock()
 
         if conn is not None:
             self._conn = conn
@@ -608,16 +611,17 @@ class PyOBDConnection:
         """
         if not self._is_async:
             return
-        try:
-            self._conn.stop()
-        except Exception:  # noqa: BLE001
-            pass
-        try:
-            self._conn.unwatch_all()
-        except Exception:  # noqa: BLE001
-            pass
-        self._watching = False
-        self.watch([n for n in command_names if n])
+        with self._lock:
+            try:
+                self._conn.stop()
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                self._conn.unwatch_all()
+            except Exception:  # noqa: BLE001
+                pass
+            self._watching = False
+            self.watch([n for n in command_names if n])
 
     def _one_shot(self, cmd):
         """Do a real one-shot query, even on an Async connection.
@@ -629,13 +633,14 @@ class PyOBDConnection:
         """
         if cmd is None:
             return None
-        try:
-            if self._is_async:
-                with self._conn.paused():
-                    return self._obd.OBD.query(self._conn, cmd, force=True)
-            return self._conn.query(cmd, force=True)
-        except Exception:  # noqa: BLE001
-            return None
+        with self._lock:
+            try:
+                if self._is_async:
+                    with self._conn.paused():
+                        return self._obd.OBD.query(self._conn, cmd, force=True)
+                return self._conn.query(cmd, force=True)
+            except Exception:  # noqa: BLE001
+                return None
 
     def supported(self) -> "set[str]":
         try:
@@ -651,10 +656,11 @@ class PyOBDConnection:
         if self._is_async and not self._watching:
             resp = self._one_shot(cmd)
         else:
-            try:
-                resp = self._conn.query(cmd)
-            except Exception:  # noqa: BLE001
-                return None
+            with self._lock:
+                try:
+                    resp = self._conn.query(cmd)
+                except Exception:  # noqa: BLE001
+                    return None
         if resp is None or resp.is_null():
             return None
         return _strip(resp.value)
@@ -690,11 +696,12 @@ class PyOBDConnection:
 
             cmd = obd.OBDCommand("ENHANCED", "enhanced", bytes(request_hex, "ascii"),
                                  0, _decode, fast=False)
-            if self._is_async:
-                with self._conn.paused():
-                    resp = obd.OBD.query(self._conn, cmd, force=True)
-            else:
-                resp = self._conn.query(cmd, force=True)
+            with self._lock:
+                if self._is_async:
+                    with self._conn.paused():
+                        resp = obd.OBD.query(self._conn, cmd, force=True)
+                else:
+                    resp = self._conn.query(cmd, force=True)
         except Exception:  # noqa: BLE001
             return []
         if resp is None or resp.is_null() or not resp.value:
@@ -863,10 +870,12 @@ class PyOBDConnection:
             return False
 
     def close(self) -> None:
-        try:
-            self._conn.close()
-        except Exception:  # noqa: BLE001
-            pass
+        # don't close the port out from under an in-flight read
+        with self._lock:
+            try:
+                self._conn.close()
+            except Exception:  # noqa: BLE001
+                pass
 
 
 class RawELM327Connection:
@@ -898,6 +907,7 @@ class RawELM327Connection:
 
     def __init__(self, port: Optional[str] = None, baud: Optional[int] = None,
                  timeout: float = 1.0, serial_obj=None):
+        self._lock = threading.RLock()  # serialize the single serial handle
         if serial_obj is not None:
             self._ser = serial_obj
         else:
@@ -908,13 +918,15 @@ class RawELM327Connection:
 
     # -- low-level transport ------------------------------------------------ #
     def _transact(self, cmd: str) -> str:
-        try:
-            self._ser.reset_input_buffer()
-        except Exception:  # noqa: BLE001
-            pass
-        self._ser.write((cmd + "\r").encode("ascii"))
-        raw = self._ser.read_until(b">")
-        return raw.decode("ascii", errors="ignore")
+        # Every read/write goes through here, so locking it serializes the port.
+        with self._lock:
+            try:
+                self._ser.reset_input_buffer()
+            except Exception:  # noqa: BLE001
+                pass
+            self._ser.write((cmd + "\r").encode("ascii"))
+            raw = self._ser.read_until(b">")
+            return raw.decode("ascii", errors="ignore")
 
     def _init_elm(self) -> None:
         for cmd in ("ATZ", "ATE0", "ATL0", "ATS0", "ATSP0"):
@@ -1021,10 +1033,11 @@ class RawELM327Connection:
         return self._transact("ATDPN").strip() or "unknown"
 
     def close(self) -> None:
-        try:
-            self._ser.close()
-        except Exception:  # noqa: BLE001
-            pass
+        with self._lock:
+            try:
+                self._ser.close()
+            except Exception:  # noqa: BLE001
+                pass
 
 
 def scan_ports() -> List[str]:
