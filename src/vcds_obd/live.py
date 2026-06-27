@@ -1112,7 +1112,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p.add_argument("--baud", type=int, help="Baud rate override (38400 / 9600 / 115200).")
     p.add_argument("--duration", type=float, default=30.0, help="Seconds to record (cap 300).")
     p.add_argument("--rate", type=float, default=5.0, help="Sample rate in Hz (default 5).")
-    p.add_argument("--logs-dir", default=os.environ.get("VCDS_LOGS_DIR", r"C:\Ross-Tech\VCDS\Logs"))
+    p.add_argument("--logs-dir", default=os.environ.get(
+        "VCDS_LOGS_DIR",
+        os.path.join(os.path.expanduser("~"), "Documents", "OBD Toolkit", "Logs")))
     p.add_argument("--list-ports", action="store_true", help="List candidate ports and exit.")
     p.add_argument("--raw", action="store_true", help="Force the raw pyserial ELM327 driver.")
     args = p.parse_args(argv)

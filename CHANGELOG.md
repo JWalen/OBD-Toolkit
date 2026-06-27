@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.30.0] - 2026-06-27
+
+### Security / CI (audit round 5 — pipeline & supply chain)
+- **Hardened the release workflow** against shell injection — the manual
+  `workflow_dispatch` tag input is now passed via `env:` (never interpolated into a
+  script body) and validated to look like `v1.2.3` before a signing job uses it.
+- **Fixed macOS manual releases** — the tag was resolved with a `:-` default that
+  kept the branch name on `workflow_dispatch`, so the `.dmg` was uploaded to a
+  non-existent release; now resolved by event, with a tag/version guard like Windows.
+
+### Fixed
+- **MCP input validation:** `run_obd_session` rejects non-finite / non-positive
+  durations gracefully; `read_measuring_log`/`find_log_events` clamp `max_points`
+  and `list_logs` clamps `limit` (no unbounded dumps).
+- **Claude Desktop config is written atomically** (temp + replace) so an interrupted
+  install can't corrupt your shared MCP config.
+- **CLI `--logs-dir` default** now matches the app/MCP (`~/Documents/OBD Toolkit/Logs`)
+  instead of the legacy `C:\Ross-Tech\VCDS\Logs`.
+- Removed a stale `pint` entry from `THIRD_PARTY_NOTICES.md` (not a dependency).
+
 ## [1.29.0] - 2026-06-27
 
 ### Fixed (audit round 4 — failure modes & error handling)
@@ -744,7 +764,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/OBD-Toolkit/compare/v1.29.0...HEAD
+[Unreleased]: https://github.com/JWalen/OBD-Toolkit/compare/v1.30.0...HEAD
+[1.30.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.30.0
 [1.29.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.29.0
 [1.28.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.28.0
 [1.27.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.27.0

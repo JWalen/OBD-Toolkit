@@ -168,6 +168,20 @@ def test_garage_load_tolerates_unknown_field_and_corrupt(tmp_path):
     assert os.path.isfile(p + ".corrupt")
 
 
+def test_mcp_run_session_validates_duration():
+    from vcds_obd import mcp_tools
+    for bad in (float("nan"), float("inf"), -5, 0, "x"):
+        r = mcp_tools.run_obd_session_impl("/tmp/logs", bad)
+        assert r.get("error") and r.get("connected") is True  # graceful, no raise
+
+
+def test_mcp_clamp_points():
+    from vcds_mcp import server
+    assert server._clamp_points(10 ** 9) == 5000   # bounded
+    assert server._clamp_points(0) == 1            # floored
+    assert server._clamp_points("x") == 500        # bad input -> default
+
+
 def test_read_capped_rejects_oversized_file(tmp_path):
     import pytest
 

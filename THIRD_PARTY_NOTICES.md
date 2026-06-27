@@ -9,7 +9,6 @@ its own license; this file is an attribution summary, not a re-license.
 | **pyqtgraph** | Plotting | MIT |
 | **python-OBD** (`obd`) | ELM327 / OBD-II access | **GPL-2.0-only** ⚠️ |
 | **pyserial** | Serial port I/O | BSD-3-Clause |
-| **pint** | Unit handling | BSD-3-Clause |
 | **certifi** | CA bundle for HTTPS (updater) | MPL-2.0 |
 | **mcp** (Model Context Protocol SDK) | MCP server | MIT |
 | **lucide** icons | Sidebar / button icons (SVG paths) | ISC |

@@ -89,9 +89,15 @@ def install_claude_desktop(
     servers = config.setdefault("mcpServers", {})
     servers[name] = {"command": command, "args": args, "env": {"VCDS_LOGS_DIR": logs_dir}}
 
+    # Atomic write so an interrupted save can't corrupt the user's shared config
+    # (which may hold unrelated MCP servers).
     try:
-        with open(path, "w", encoding="utf-8") as fh:
+        tmp = f"{path}.tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(config, fh, indent=2)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
     except OSError as exc:
         return False, f"Could not write config: {exc}"
     return True, f"Added '{name}' to {path}.\nRestart Claude Desktop to load it."

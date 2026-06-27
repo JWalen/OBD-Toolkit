@@ -160,7 +160,14 @@ def run_obd_session_impl(
     port: Optional[str] = None,
     trigger: Optional[dict] = None,
 ) -> dict:
-    duration_s = min(float(duration_s), float(live.MAX_SESSION_SECONDS))
+    import math
+    try:
+        duration_s = float(duration_s)
+    except (TypeError, ValueError):
+        return {"connected": True, "error": "duration_s must be a number."}
+    if not math.isfinite(duration_s) or duration_s <= 0:
+        return {"connected": True, "error": "duration_s must be a positive finite number."}
+    duration_s = min(duration_s, float(live.MAX_SESSION_SECONDS))
     try:
         conn = live.connect(port=port)
     except Exception as exc:  # noqa: BLE001

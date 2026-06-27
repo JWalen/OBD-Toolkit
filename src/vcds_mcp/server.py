@@ -51,6 +51,14 @@ def logs_dir() -> str:
     return os.path.abspath(os.environ.get("VCDS_LOGS_DIR", DEFAULT_LOGS_DIR))
 
 
+def _clamp_points(n) -> int:
+    """Bound max_points so an MCP caller can't request an unbounded full-series dump."""
+    try:
+        return max(1, min(int(n), 5000))
+    except (TypeError, ValueError):
+        return 500
+
+
 def _safe_path(filename: str) -> str:
     """Resolve ``filename`` inside the logs folder, rejecting traversal.
 
@@ -136,6 +144,10 @@ def list_logs(kind: str = "all", limit: int = 50) -> dict:
     base = logs_dir()
     if not os.path.isdir(base):
         return {"logs_dir": base, "error": "Logs directory does not exist.", "files": []}
+    try:
+        limit = max(0, min(int(limit), 500))
+    except (TypeError, ValueError):
+        limit = 50
     rows = []
     for name in os.listdir(base):
         full = os.path.join(base, name)
@@ -205,6 +217,7 @@ def read_measuring_log(
         and optionally the down-sampled series.
     """
     path = _safe_path(filename)
+    max_points = _clamp_points(max_points)
     mlog = parse.parse_measuring_log(path, max_points=max_points)
     if include_computed:
         compute.add_computed_channels(mlog, max_points=max_points)
@@ -263,6 +276,7 @@ def find_log_events(
         A time-sorted list of events.
     """
     path = _safe_path(filename)
+    max_points = _clamp_points(max_points)
     mlog = parse.parse_measuring_log(path, max_points=max_points)
     events = parse.find_events(mlog, rules=rules)
     return {"file": os.path.basename(mlog.file), "count": len(events), "events": [_event_dict(e) for e in events]}
