@@ -95,6 +95,29 @@ def test_fuel_economy_handles_misaligned_fuel_series(tmp_path):
     assert econ is not None and econ.fuel_l > 0 and econ.l_per_100km is not None
 
 
+def _cam_log(tmp_path, spec_name, act_name):
+    rows = [f"TIME,{spec_name},{act_name}", "s,deg,deg"]
+    for k in range(6):
+        rows.append(f"{k * 0.5:.1f},10,{10 - k * 6}")  # actual diverges far from spec
+    p = tmp_path / "cam.csv"
+    p.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    return parse.parse_measuring_log(str(p))
+
+
+def test_cam_timing_no_cross_pairing(tmp_path):
+    # intake-specified vs exhaust-actual is a DIFFERENT camshaft — must not fire.
+    log = _cam_log(tmp_path, "Intake Cam Specified", "Exhaust Cam Actual")
+    report = diagnose(log=log, profile="vag")
+    assert not any("Camshaft timing deviation" in f.title for f in report.findings)
+
+
+def test_cam_timing_same_cam_fires(tmp_path):
+    # same camshaft, actual can't follow specified -> real deviation finding.
+    log = _cam_log(tmp_path, "Intake Cam Specified", "Intake Cam Actual")
+    report = diagnose(log=log, profile="vag")
+    assert any("Camshaft timing deviation" in f.title for f in report.findings)
+
+
 def test_openai_token_param_for_o_series():
     from vcds_gui.ai import _openai_token_param
     assert "max_completion_tokens" in _openai_token_param("o4-mini", 100)

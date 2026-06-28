@@ -59,6 +59,24 @@ def _clamp_points(n) -> int:
         return 500
 
 
+def _load_measuring(filename: str, **kw):
+    """Return (mlog, None) or (None, {error}). A security rejection (path traversal,
+    missing file) from _safe_path still RAISES — only a parse error is softened."""
+    path = _safe_path(filename)  # raises on traversal / not-found (hard error)
+    try:
+        return parse.parse_measuring_log(path, **kw), None
+    except (ValueError, OSError) as exc:
+        return None, {"error": f"Could not read '{filename}': {exc}"}
+
+
+def _load_scan(filename: str):
+    path = _safe_path(filename)
+    try:
+        return parse.parse_autoscan(path), None
+    except (ValueError, OSError) as exc:
+        return None, {"error": f"Could not read '{filename}': {exc}"}
+
+
 def _safe_path(filename: str) -> str:
     """Resolve ``filename`` inside the logs folder, rejecting traversal.
 
@@ -175,8 +193,9 @@ def read_autoscan(filename: str) -> dict:
         VIN, mileage, a list of modules (address, name, faults with status
         detail) and any count-reconciliation notes.
     """
-    path = _safe_path(filename)
-    scan = parse.parse_autoscan(path)
+    scan, err = _load_scan(filename)
+    if err:
+        return err
     return {
         "file": os.path.basename(scan.file),
         "vin": scan.vin,
@@ -216,11 +235,11 @@ def read_measuring_log(
         The detected format, delimiter, echoed header rows, per-channel stats,
         and optionally the down-sampled series.
     """
-    path = _safe_path(filename)
-    max_points = _clamp_points(max_points)
-    mlog = parse.parse_measuring_log(path, max_points=max_points)
+    mlog, err = _load_measuring(filename, max_points=_clamp_points(max_points))
+    if err:
+        return err
     if include_computed:
-        compute.add_computed_channels(mlog, max_points=max_points)
+        compute.add_computed_channels(mlog, max_points=_clamp_points(max_points))
     out = _log_summary(mlog)
     if include_series:
         wanted = [c.lower() for c in channels] if channels else None
@@ -244,8 +263,9 @@ def channel_stats(filename: str, channel: str) -> dict:
     Returns:
         The matched channel's stats, or an error if no channel matches.
     """
-    path = _safe_path(filename)
-    mlog = parse.parse_measuring_log(path)
+    mlog, err = _load_measuring(filename)
+    if err:
+        return err
     ch = mlog.channel(channel)
     if ch is None:
         return {
@@ -275,9 +295,10 @@ def find_log_events(
     Returns:
         A time-sorted list of events.
     """
-    path = _safe_path(filename)
-    max_points = _clamp_points(max_points)
-    mlog = parse.parse_measuring_log(path, max_points=max_points)
+    mlog, err = _load_measuring(filename, max_points=_clamp_points(max_points))
+    if err:
+        return err
+    rules = [r for r in rules if isinstance(r, dict)] if isinstance(rules, list) else None
     events = parse.find_events(mlog, rules=rules)
     return {"file": os.path.basename(mlog.file), "count": len(events), "events": [_event_dict(e) for e in events]}
 
@@ -339,13 +360,20 @@ def diagnose_file(filename: Optional[str] = None, autoscan: Optional[str] = None
         and the list of findings.
     """
     scan = log = None
+    notes = []
     if autoscan:
-        scan = parse.parse_autoscan(_safe_path(autoscan))
+        scan, err = _load_scan(autoscan)
+        if err:
+            notes.append(err["error"])
     if filename:
-        log = parse.parse_measuring_log(_safe_path(filename))
-        compute.add_computed_channels(log)
+        log, err = _load_measuring(filename)
+        if err:
+            notes.append(err["error"])
+        elif log is not None:
+            compute.add_computed_channels(log)
     if scan is None and log is None:
-        return {"error": "Provide a measuring-log filename and/or an autoscan filename."}
+        return {"error": "; ".join(notes)
+                or "Provide a measuring-log filename and/or an autoscan filename."}
     report = run_diagnose(scan=scan, log=log)
     return {
         "vin": report.vin,
@@ -369,8 +397,9 @@ def analyze_performance(filename: str, mass_kg: float = 1850) -> dict:
         Acceleration times (e.g. 0–100 km/h), detected pulls, and an estimated
         crank power/torque figure (approximate — depends on mass/drag).
     """
-    path = _safe_path(filename)
-    mlog = parse.parse_measuring_log(path)
+    mlog, err = _load_measuring(filename)
+    if err:
+        return err
     runs = perform.standard_accel_runs(mlog)
     pulls = perform.detect_pulls(mlog)
     est = perform.estimate_power(mlog, mass_kg)

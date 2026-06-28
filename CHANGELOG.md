@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.34.0] - 2026-06-28
+
+### Fixed (assessment wave 1)
+- **No more false "timing chain stretched" warning.** The camshaft deviation check
+  could pair *different* camshafts (intake‑specified vs exhaust‑actual, or bank 1 vs
+  bank 2) and report a large deviation on a healthy engine — it now only compares
+  the specified vs actual channel of the **same** camshaft.
+- **Corrupt `ai_chats.json` no longer breaks the AI page.** The chat store now skips
+  malformed records, moves a corrupt file aside, and saves atomically.
+- **MCP file tools** (`read_measuring_log`, `find_log_events`, `diagnose_file`, …)
+  return a clean `{"error": …}` on an unreadable/garbage file instead of throwing.
+- **Linux AppImage updates are safer:** the in‑place self‑update only runs when the
+  download was integrity‑verified, and the replace is atomic.
+
+### Changed (UI/UX)
+- **Synchronous OBD reads no longer look frozen** — Read DTCs / Vehicle Info /
+  Mode 06 now show a wait cursor + status and surface an actionable error instead of
+  a generic crash dialog.
+- **Disabled accent buttons now look disabled** (Start/Connect/Open/Send).
+- **Gauge "OK" color follows the theme accent** (was hardcoded blue in dark mode);
+  one‑off colors now read from a single active‑theme accessor.
+- **Empty adapter list** gives guidance ("plug in USB / pair Bluetooth / use Wi‑Fi").
+- **Splitters** no longer collapse panels, and the plot absorbs extra width.
+
+### Added
+- **Overdue maintenance on the Dashboard** — the active‑vehicle card now shows an
+  amber "Due soon" / red "Overdue" line from your service log.
+
 ## [1.33.0] - 2026-06-28
 
 ### Changed — UI/UX overhaul (polished, more intuitive flow)
@@ -824,7 +852,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/OBD-Toolkit/compare/v1.33.0...HEAD
+[Unreleased]: https://github.com/JWalen/OBD-Toolkit/compare/v1.34.0...HEAD
+[1.34.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.34.0
 [1.33.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.33.0
 [1.32.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.32.0
 [1.31.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.31.0

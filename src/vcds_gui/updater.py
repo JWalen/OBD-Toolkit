@@ -251,24 +251,33 @@ def launch_installer(path: str, silent: bool = False, relaunch: Optional[str] = 
         subprocess.Popen(["open", path])
         return
     if not sys.platform.startswith("win"):
-        # Linux / Raspberry Pi: the download is a new .AppImage. If we're running
-        # AS an AppImage, replace the running file in place and relaunch; else just
-        # open the folder so the user can move the new AppImage over the old one.
+        # Linux / Raspberry Pi: the download is a new .AppImage.
         try:
             os.chmod(path, 0o755)
         except OSError:
             pass
         current = os.environ.get("APPIMAGE")
-        if current and os.path.isfile(current):
+        # Only self-replace + relaunch when the download was integrity-verified
+        # (silent mirrors the verified gate) — never auto-run an unverified binary.
+        if silent and current and os.path.isfile(current):
             try:
                 import shutil
 
-                shutil.move(path, current)
-                os.chmod(current, 0o755)
+                # Stage next to the current AppImage (same filesystem) then replace
+                # atomically, so a failure can't leave a half-written executable.
+                staging = current + ".new"
+                shutil.copyfile(path, staging)
+                os.chmod(staging, 0o755)
+                os.replace(staging, current)
                 subprocess.Popen([current])
                 return
             except OSError:
-                pass
+                try:
+                    os.remove(current + ".new")
+                except OSError:
+                    pass
+        # Unverified, not running as an AppImage, or replace failed: just reveal the
+        # download so the user can move it over the old one themselves.
         subprocess.Popen(["xdg-open", os.path.dirname(path) or "."])
         return
     if not silent:

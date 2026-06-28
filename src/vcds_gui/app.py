@@ -158,6 +158,7 @@ if _HAVE_QT:
     QPushButton#Accent {{ background:{accent}; color:{accent_fg}; border:none; font-weight:700; }}
     QPushButton#Accent:hover {{ background:{accent2}; }}
     QPushButton#Accent:pressed {{ background:{accent}; }}
+    QPushButton#Accent:disabled {{ background:{base}; color:{subtle}; border:1px solid {line}; }}
 
     QLineEdit, QPlainTextEdit, QTextEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTextBrowser {{
         background:{base}; color:{text}; border:1px solid {line2}; border-radius:9px;
@@ -238,6 +239,13 @@ if _HAVE_QT:
             p.setColor(QtGui.QPalette.Disabled, role, c(t["subtle"]))
         return p
 
+    _ACTIVE_TOKENS = dict(CARBON)  # updated by apply_theme; read via active_tokens()
+
+    def active_tokens() -> dict:
+        """The currently-applied theme tokens — single source for one-off colors
+        (gauges, chat accent, banners, plots) so they stay theme-coherent."""
+        return _ACTIVE_TOKENS
+
     def apply_theme(dark: bool):
         """Apply the carbon (dark) or light theme to the whole application."""
         app = QtWidgets.QApplication.instance()
@@ -245,6 +253,8 @@ if _HAVE_QT:
             return
         app.setStyle("Fusion")
         tokens = CARBON if dark else LIGHT
+        _ACTIVE_TOKENS.clear()
+        _ACTIVE_TOKENS.update(tokens)
         app.setPalette(_theme_palette(tokens))
         app.setStyleSheet(_QSS_TEMPLATE.format(**tokens))
 
@@ -588,6 +598,30 @@ if _HAVE_QT:
         f.setFixedSize(1, 22)
         return f
 
+    class _Busy:
+        """Wait-cursor + optional status text around a blocking operation."""
+
+        def __init__(self, status=None, msg="Working…"):
+            self._status, self._msg, self._old = status, msg, None
+
+        def __enter__(self):
+            app = QtWidgets.QApplication.instance()
+            if app is not None:
+                app.setOverrideCursor(QtGui.QCursor(QtCore.Qt.WaitCursor))
+            if self._status is not None:
+                self._old = self._status.text()
+                self._status.setText(self._msg)
+            QtWidgets.QApplication.processEvents()
+            return self
+
+        def __exit__(self, *exc):
+            app = QtWidgets.QApplication.instance()
+            if app is not None:
+                app.restoreOverrideCursor()
+            if self._status is not None and self._old is not None:
+                self._status.setText(self._old)
+            return False
+
     # --------------------------------------------------------------------- #
     # Files — open & analyze logs / Auto-Scans
     # --------------------------------------------------------------------- #
@@ -702,6 +736,8 @@ if _HAVE_QT:
             split.addWidget(right)
 
             split.setSizes([280, 700, 320])
+            split.setChildrenCollapsible(False)
+            split.setStretchFactor(1, 1)  # the plot absorbs extra width
 
             # signals
             self.btn_open.clicked.connect(self.open_csv_dialog)
@@ -1358,6 +1394,8 @@ if _HAVE_QT:
             self.plot = PlotPanel()
             split.addWidget(self.plot)
             split.setSizes([400, 720])
+            split.setChildrenCollapsible(False)
+            split.setStretchFactor(1, 1)  # the plot absorbs extra width
 
             # logging controls — grouped: live monitoring | recording
             run_bar = FlowLayout()
@@ -1420,10 +1458,15 @@ if _HAVE_QT:
         # -- ports / connection -------------------------------------------- #
         def scan_ports(self):
             self.port_combo.clear()
-            self.port_combo.addItems(live.scan_ports())
+            ports = live.scan_ports()
+            self.port_combo.addItems(ports)
             saved = self.settings.value("live/wifi", "", type=str)
             if saved:
                 self.port_combo.addItem(f"socket://{saved}")
+            if not ports and not saved:
+                self.conn_status.setText(
+                    "No adapter ports found — plug in a USB ELM327, pair a Bluetooth "
+                    "one, or use Wi-Fi…")
 
         def setup_wifi(self):
             saved = self.settings.value("live/wifi", "192.168.0.10:35000", type=str)
@@ -1665,7 +1708,14 @@ if _HAVE_QT:
         def show_onboard_tests(self):
             if self.conn is None:
                 return
-            tests = self.conn.read_monitor_tests() if hasattr(self.conn, "read_monitor_tests") else []
+            try:
+                with _Busy(self.conn_status, "Reading on-board tests (Mode 06)…"):
+                    tests = (self.conn.read_monitor_tests()
+                             if hasattr(self.conn, "read_monitor_tests") else [])
+            except Exception as exc:  # noqa: BLE001
+                QtWidgets.QMessageBox.warning(
+                    self, "On-board tests", f"Could not read on-board tests: {exc}")
+                return
             OnboardTestsDialog(tests, self).exec()
 
         def show_vehicle_info(self):
@@ -1675,13 +1725,19 @@ if _HAVE_QT:
             from vcds_core import vin as vinmod
 
             conn = self.conn
-            vstr = conn.read_vin() if hasattr(conn, "read_vin") else None
-            cals = conn.read_calibration_ids() if hasattr(conn, "read_calibration_ids") else []
-            readiness = conn.read_readiness() if hasattr(conn, "read_readiness") else None
             try:
-                perm = conn.read_permanent_dtcs() if hasattr(conn, "read_permanent_dtcs") else []
-            except Exception:  # noqa: BLE001
-                perm = []
+                with _Busy(self.conn_status, "Reading vehicle info (VIN, cal IDs, readiness)…"):
+                    vstr = conn.read_vin() if hasattr(conn, "read_vin") else None
+                    cals = conn.read_calibration_ids() if hasattr(conn, "read_calibration_ids") else []
+                    readiness = conn.read_readiness() if hasattr(conn, "read_readiness") else None
+                    try:
+                        perm = conn.read_permanent_dtcs() if hasattr(conn, "read_permanent_dtcs") else []
+                    except Exception:  # noqa: BLE001
+                        perm = []
+            except Exception as exc:  # noqa: BLE001
+                QtWidgets.QMessageBox.warning(
+                    self, "Vehicle Info", f"Could not read vehicle info: {exc}")
+                return
             info = vinmod.decode_vin(vstr) if vstr else None
             VehicleInfoDialog(vstr, info, cals, readiness, perm, self).exec()
             # Auto-select the brand profile from the VIN, and add to the garage.
@@ -1723,7 +1779,8 @@ if _HAVE_QT:
                 return
             self.dtc_tree.clear()
             try:
-                dtcs = live.read_dtcs(self.conn)
+                with _Busy(self.conn_status, "Reading DTCs…"):
+                    dtcs = live.read_dtcs(self.conn)
             except Exception as exc:  # noqa: BLE001
                 self.dtc_tree.addTopLevelItem(QtWidgets.QTreeWidgetItem([f"Error: {exc}", ""]))
                 return
@@ -2772,15 +2829,16 @@ if _HAVE_QT:
             self.update()
 
         def _color(self):
+            ok = QtGui.QColor(active_tokens().get("accent", "#0066CC"))  # theme accent
             if self.value is None:
-                return QtGui.QColor("#0066CC")
+                return ok
             if self.crit is not None and self.value >= self.crit:
                 return QtGui.QColor("#E53E3E")
             if self.crit_lo is not None and self.value <= self.crit_lo:
                 return QtGui.QColor("#E53E3E")  # low-side breach (e.g. low oil pressure)
             if self.warn is not None and self.value >= self.warn:
                 return QtGui.QColor("#DD6B20")
-            return QtGui.QColor("#0066CC")
+            return ok
 
         def _frac(self):
             if self.value is None or self.vmax == self.vmin:
@@ -3296,12 +3354,23 @@ if _HAVE_QT:
 
         def _load_chats(self):
             import json
-            chats = []
+            raw = None
+            path = self._chats_path()
             try:
-                with open(self._chats_path(), encoding="utf-8") as fh:
-                    chats = json.load(fh)
-            except Exception:  # noqa: BLE001
-                chats = []
+                with open(path, encoding="utf-8") as fh:
+                    raw = json.load(fh)
+            except OSError:
+                raw = None
+            except ValueError:
+                # Corrupt JSON — move aside so we don't overwrite it, then start fresh.
+                try:
+                    os.replace(path, path + ".corrupt")
+                except OSError:
+                    pass
+                raw = None
+            # Keep only well-formed chat records (a list message store).
+            chats = [c for c in raw if isinstance(c, dict) and isinstance(c.get("messages"), list)] \
+                if isinstance(raw, list) else []
             if not chats:
                 chats = self._migrate_garage_chats()
             self.chats = chats if isinstance(chats, list) else []
@@ -3316,8 +3385,12 @@ if _HAVE_QT:
             import json
             try:
                 os.makedirs(DEFAULT_LOGS_DIR, exist_ok=True)
-                with open(self._chats_path(), "w", encoding="utf-8") as fh:
+                tmp = self._chats_path() + ".tmp"
+                with open(tmp, "w", encoding="utf-8") as fh:
                     json.dump(self.chats, fh, indent=2)
+                    fh.flush()
+                    os.fsync(fh.fileno())
+                os.replace(tmp, self._chats_path())  # atomic — never a partial file
             except Exception:  # noqa: BLE001
                 pass
 
@@ -4107,6 +4180,10 @@ if _HAVE_QT:
             self.veh_body = QtWidgets.QLabel("—")
             self.veh_body.setWordWrap(True)
             vbody.addWidget(self.veh_body)
+            self.maint_label = QtWidgets.QLabel("")
+            self.maint_label.setWordWrap(True)
+            self.maint_label.setVisible(False)
+            vbody.addWidget(self.maint_label)
             vbody.addSpacing(8)
             vact = QtWidgets.QHBoxLayout()
             btn_garage = QtWidgets.QPushButton("Open Garage")
@@ -4182,14 +4259,40 @@ if _HAVE_QT:
             else:
                 self.main.analyzer.load_csv(path)
 
+        def _show_maintenance(self, veh):
+            """Glanceable maintenance status on the active-vehicle card."""
+            try:
+                due = garage_mod.maintenance_due(veh)
+            except Exception:  # noqa: BLE001
+                return
+            if not due:
+                return
+            overdue = [d for d in due if d.get("overdue")]
+            soon = [d for d in due if not d.get("overdue") and d.get("remaining") is not None
+                    and d["remaining"] <= 1000]
+            tok = active_tokens()
+            if overdue:
+                names = ", ".join(d["type"] for d in overdue[:3])
+                self.maint_label.setText(
+                    f"<b style='color:{tok.get('red', '#E53E3E')}'>⚠ Overdue:</b> {names}")
+                self.maint_label.setVisible(True)
+            elif soon:
+                names = ", ".join(f"{d['type']} (~{int(d['remaining'])} mi)" for d in soon[:3])
+                self.maint_label.setText(
+                    f"<b style='color:#DD6B20'>Due soon:</b> {names}")
+                self.maint_label.setVisible(True)
+
         def refresh(self):
             # active vehicle
             vin = self.main.settings.value("garage/active_vin", "", type=str)
+            self.maint_label.setVisible(False)
             if vin:
                 veh = garage_mod.find(
                     garage_mod.load_garage(os.path.join(DEFAULT_LOGS_DIR, "garage.json")), vin)
                 self.veh_body.setText(
                     f"{veh.label}\nVIN {veh.vin}" if veh else f"VIN {vin}")
+                if veh is not None:
+                    self._show_maintenance(veh)
             else:
                 self.veh_body.setText("No active vehicle.\nRead Vehicle Info or open the Garage.")
             # recent logs (incl. per-vehicle subfolders)

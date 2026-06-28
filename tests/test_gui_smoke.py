@@ -105,6 +105,26 @@ def test_ai_multi_chat(qapp, tmp_path, monkeypatch):
     win.close()
 
 
+def test_ai_load_chats_tolerates_corrupt(qapp, tmp_path, monkeypatch):
+    import json
+    monkeypatch.setattr(gui_app, "DEFAULT_LOGS_DIR", str(tmp_path))
+    win = gui_app.MainWindow()
+    tab = win.ai_tab
+    path = str(tmp_path / "ai_chats.json")
+    monkeypatch.setattr(tab, "_chats_path", lambda: path)
+    # bad records (non-dict, and a dict missing 'messages') + one good chat
+    json.dump(["junk", {"title": "no messages"}, {"title": "ok", "messages": []}],
+              open(path, "w", encoding="utf-8"))
+    tab._load_chats()  # must not raise
+    assert all(isinstance(c, dict) and isinstance(c.get("messages"), list) for c in tab.chats)
+    # outright corrupt JSON is moved aside and we still start with a usable chat
+    open(path, "w", encoding="utf-8").write("{ not json")
+    tab._load_chats()
+    import os
+    assert os.path.isfile(path + ".corrupt") and tab.chats
+    win.close()
+
+
 def test_ai_consent_gate(qapp, monkeypatch):
     win = gui_app.MainWindow()
     tab = win.ai_tab

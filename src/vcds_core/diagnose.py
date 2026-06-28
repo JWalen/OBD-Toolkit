@@ -158,20 +158,23 @@ def _timing_findings(scan: Optional[AutoScan], log: Optional[MeasuringLog],
                 if cam_dev is None or d > cam_dev[0]:
                     cam_dev = (d, ch.name, _u(ch))
 
-        cam_spec = cam_act = None
-        for c in log.channels:
-            n = c.name.lower()
-            if "cam" not in n:
-                continue
-            if cam_spec is None and any(k in n for k in ("spec", "target", "nominal",
-                                                         "setpoint", "desired")):
-                cam_spec = c
-            if cam_act is None and any(k in n for k in ("actual", "act.", "real", "measured")):
-                cam_act = c
-        if cam_spec is not None and cam_act is not None:
-            worst = _max_abs_diff(log, cam_spec.name, cam_act.name)
-            if worst is not None and (cam_dev is None or worst > cam_dev[0]):
-                cam_dev = (worst, f"{cam_act.name} vs {cam_spec.name}", _u(cam_act))
+        # Pair a specified channel with the actual channel for the SAME camshaft
+        # (intake/exhaust, bank) — otherwise intake-spec vs exhaust-actual (or B1
+        # vs B2) produces a bogus deviation and a false timing-chain warning.
+        _SPEC = ("specified", "spec", "target", "nominal", "setpoint", "desired")
+        _ACT = ("actual", "act.", "real", "measured")
+        specs = [c for c in log.channels if "cam" in c.name.lower()
+                 and any(k in c.name.lower() for k in _SPEC)]
+        acts = [c for c in log.channels if "cam" in c.name.lower()
+                and any(k in c.name.lower() for k in _ACT)]
+        for s in specs:
+            for ac in acts:
+                # base = name minus spec/actual words but KEEPING intake/exhaust/bank
+                if _cam_base(s.name, _SPEC + _ACT) != _cam_base(ac.name, _SPEC + _ACT):
+                    continue
+                worst = _max_abs_diff(log, s.name, ac.name)
+                if worst is not None and (cam_dev is None or worst > cam_dev[0]):
+                    cam_dev = (worst, f"{ac.name} vs {s.name}", _u(ac))
 
         if cam_dev is not None and cam_dev[0] >= 6.0:
             out.append(Finding(
@@ -303,6 +306,15 @@ def _div_base(name: str) -> str:
     """Strip spec/actual/bank qualifiers so two channels of the SAME quantity match."""
     n = name.lower()
     for w in _DIV_QUALIFIERS:
+        n = n.replace(w, " ")
+    return re.sub(r"[^a-z0-9]+", " ", n).strip()
+
+
+def _cam_base(name: str, words) -> str:
+    """Strip only the given spec/actual words — KEEP intake/exhaust/bank so the
+    same camshaft's specified and actual channels match but different cams don't."""
+    n = name.lower()
+    for w in words:
         n = n.replace(w, " ")
     return re.sub(r"[^a-z0-9]+", " ", n).strip()
 
