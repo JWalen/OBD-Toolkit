@@ -68,11 +68,24 @@ def test_fetch_latest_picks_platform_installer():
         "assets": [
             {"name": "OBD-Toolkit-2.0.0.dmg", "browser_download_url": "x", "size": 1},
             {"name": "VCDS-Toolkit-Setup-2.0.0.exe", "browser_download_url": "y", "size": 2},
+            {"name": "OBD-Toolkit-2.0.0-x86_64.AppImage", "browser_download_url": "z", "size": 3},
+            {"name": "OBD-Toolkit-2.0.0-aarch64.AppImage", "browser_download_url": "w", "size": 4},
         ],
     }
     info = updater.fetch_latest(opener=_opener_for(payload))
-    expected = ".dmg" if sys.platform == "darwin" else ".exe"
-    assert info.installer_name.endswith(expected)
+    if sys.platform == "darwin":
+        expected = ".dmg"
+    elif sys.platform.startswith("win"):
+        expected = ".exe"
+    else:
+        expected = ".appimage"
+    assert info.installer_name.lower().endswith(expected)
+
+
+def test_platform_asset_ext_and_arch():
+    ext = updater._platform_asset_ext()
+    assert ext in (".dmg", ".exe", ".appimage")
+    assert updater._linux_arch() in ("", "x86_64", "aarch64")
 
 
 # --------------------------------------------------------------------------- #

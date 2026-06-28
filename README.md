@@ -85,9 +85,43 @@ lower the sample rate. Clones also vary in baud — try `38400`, then `9600`, th
 
 ---
 
-## Install
+## Download (desktop app)
 
-Requires **Python 3.10+** on Windows.
+Prebuilt installers are attached to each
+[release](https://github.com/JWalen/OBD-Toolkit/releases):
+
+| Platform | Asset | Run it |
+|----------|-------|--------|
+| **Windows** | `VCDS-Toolkit-Setup-*.exe` | run the installer |
+| **macOS** | `OBD-Toolkit-*.dmg` | open, drag to Applications |
+| **Linux (x86_64)** | `OBD-Toolkit-*-x86_64.AppImage` | `chmod +x` then run |
+
+### Linux / Raspberry Pi
+
+On **x86_64 desktop Linux**, download the **AppImage**, make it executable and run
+it (you may need `sudo apt install libfuse2 libxcb-cursor0`):
+
+```bash
+chmod +x OBD-Toolkit-*-x86_64.AppImage
+./OBD-Toolkit-*-x86_64.AppImage
+```
+
+On a **Raspberry Pi** (64-bit Raspberry Pi OS / Debian — ARM), use the install
+script, which sources Qt/PySide6 from the system (the reliable path on ARM):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/JWalen/OBD-Toolkit/master/scripts/install-pi.sh | bash
+obd-toolkit
+```
+
+It also adds you to the `dialout` group so the app can read a USB ELM327
+(`/dev/ttyUSB0`); log out/in once for that to take effect.
+
+---
+
+## Install (from source)
+
+Requires **Python 3.10+** (Windows, macOS or Linux).
 
 ```powershell
 py -3.12 -m venv .venv

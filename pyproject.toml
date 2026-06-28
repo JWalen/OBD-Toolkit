@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vcds-toolkit"
-version = "1.31.0"
+version = "1.32.0"
 description = "Analyze VCDS measuring logs & Auto-Scans and capture live ELM327 OBD-II data, surfaced via an MCP server and a desktop GUI."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -46,6 +46,7 @@ dev = [
 [project.scripts]
 vcds-mcp = "vcds_mcp.server:main"
 vcds-gui = "vcds_gui.app:main"
+obd-toolkit = "vcds_gui.app:main"
 vcds-obd-log = "vcds_obd.live:main"
 
 [tool.setuptools.packages.find]

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.32.0] - 2026-06-27
+
+### Added — Linux & Raspberry Pi
+- **Linux desktop app (x86_64 AppImage).** Releases now include a single-file
+  `OBD-Toolkit-*-x86_64.AppImage` built in CI (PyInstaller + appimagetool) — make
+  it executable and run, no install needed.
+- **Raspberry Pi install script** (`scripts/install-pi.sh`): one command sets up
+  OBD Toolkit on 64-bit Raspberry Pi OS / Debian, sourcing Qt/PySide6 from the
+  system (the reliable path on ARM) and adding serial-port (`dialout`) access.
+- **`obd-toolkit` console command** (alias of `vcds-gui`).
+- The **in-app updater is platform-aware**: it picks the `.AppImage` for your CPU
+  arch on Linux and, when running as an AppImage, updates in place and relaunches.
+
 ## [1.31.0] - 2026-06-27
 
 ### Fixed (audit round 6 — UX, accessibility & onboarding)
@@ -787,7 +800,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/OBD-Toolkit/compare/v1.31.0...HEAD
+[Unreleased]: https://github.com/JWalen/OBD-Toolkit/compare/v1.32.0...HEAD
+[1.32.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.32.0
 [1.31.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.31.0
 [1.30.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.30.0
 [1.29.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.29.0

@@ -23,6 +23,27 @@ from typing import Callable, Optional
 REPO = "JWalen/OBD-Toolkit"
 _API = "https://api.github.com/repos/{repo}/releases/latest"
 
+
+def _platform_asset_ext() -> str:
+    """Release-asset extension for the running OS."""
+    if sys.platform == "darwin":
+        return ".dmg"
+    if sys.platform.startswith("win"):
+        return ".exe"
+    return ".appimage"  # Linux / Raspberry Pi
+
+
+def _linux_arch() -> str:
+    """Coarse CPU-arch token used in Linux AppImage asset names ('' if unknown)."""
+    import platform
+
+    m = (platform.machine() or "").lower()
+    if m in ("x86_64", "amd64"):
+        return "x86_64"
+    if m in ("aarch64", "arm64"):
+        return "aarch64"
+    return ""
+
 # Injectable opener: callable(request, timeout) -> context-manager response.
 Opener = Callable[..., object]
 
@@ -109,12 +130,19 @@ def fetch_latest(repo: str = REPO, opener: Opener = _urlopen, timeout: float = 1
         data = json.loads(resp.read().decode("utf-8"))
 
     tag = data.get("tag_name") or ""
-    ext = ".dmg" if sys.platform == "darwin" else ".exe"
+    ext = _platform_asset_ext()
     installer = None
     for asset in data.get("assets") or []:
-        if str(asset.get("name", "")).lower().endswith(ext):
-            installer = asset
-            break
+        name = str(asset.get("name", "")).lower()
+        if not name.endswith(ext):
+            continue
+        # On Linux also match the CPU arch so an arm64 Pi doesn't grab x86_64.
+        if ext == ".appimage":
+            arch = _linux_arch()
+            if arch and arch not in name:
+                continue
+        installer = asset
+        break
 
     sha256 = None
     digest = (installer or {}).get("digest") or ""
@@ -223,7 +251,25 @@ def launch_installer(path: str, silent: bool = False, relaunch: Optional[str] = 
         subprocess.Popen(["open", path])
         return
     if not sys.platform.startswith("win"):
-        subprocess.Popen([path])
+        # Linux / Raspberry Pi: the download is a new .AppImage. If we're running
+        # AS an AppImage, replace the running file in place and relaunch; else just
+        # open the folder so the user can move the new AppImage over the old one.
+        try:
+            os.chmod(path, 0o755)
+        except OSError:
+            pass
+        current = os.environ.get("APPIMAGE")
+        if current and os.path.isfile(current):
+            try:
+                import shutil
+
+                shutil.move(path, current)
+                os.chmod(current, 0o755)
+                subprocess.Popen([current])
+                return
+            except OSError:
+                pass
+        subprocess.Popen(["xdg-open", os.path.dirname(path) or "."])
         return
     if not silent:
         os.startfile(path)  # type: ignore[attr-defined]  # noqa: S606 - intended
