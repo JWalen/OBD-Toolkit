@@ -271,6 +271,11 @@ jobs:
           fi
 
       - name: Embed version and build (PyInstaller)
+        env:
+          # PyInstaller imports pyqtgraph submodules in an isolated subprocess to
+          # collect them; on a headless runner the xcb plugin aborts, so force the
+          # offscreen platform for the build.
+          QT_QPA_PLATFORM: offscreen
         run: |
           VER=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
           echo "OBD_VERSION=$VER" >> "$GITHUB_ENV"
