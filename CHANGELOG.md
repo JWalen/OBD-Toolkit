@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.36.0] - 2026-06-28
+
+### Changed
+- **Live capture settings persist** — the recording duration and rate are remembered
+  between sessions.
+- **Linux/Raspberry Pi data location** — when there's no `~/Documents` (typical on a
+  headless Pi), logs/garage/chats now live under the XDG data dir
+  (`~/.local/share/OBD-Toolkit/Logs`); existing `~/Documents` setups are unchanged.
+- Removed two leftover emoji from the F1 User Guide text for consistency.
+
 ## [1.35.0] - 2026-06-28
 
 ### Fixed (assessment wave 2)
@@ -871,7 +881,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/OBD-Toolkit/compare/v1.35.0...HEAD
+[Unreleased]: https://github.com/JWalen/OBD-Toolkit/compare/v1.36.0...HEAD
+[1.36.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.36.0
 [1.35.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.35.0
 [1.34.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.34.0
 [1.33.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.33.0

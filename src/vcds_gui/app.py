@@ -56,7 +56,15 @@ def _default_logs_dir() -> str:
     env = os.environ.get("VCDS_LOGS_DIR")
     if env:
         return env
-    return os.path.join(os.path.expanduser("~"), "Documents", "OBD Toolkit", "Logs")
+    home = os.path.expanduser("~")
+    docs = os.path.join(home, "Documents", "OBD Toolkit", "Logs")
+    # Windows/macOS always have ~/Documents; on Linux keep it only when it exists
+    # (so upgrades stay put), otherwise use the XDG data dir (headless Pi installs).
+    if sys.platform.startswith("win") or sys.platform == "darwin" \
+            or os.path.isdir(os.path.join(home, "Documents")):
+        return docs
+    xdg = os.environ.get("XDG_DATA_HOME") or os.path.join(home, ".local", "share")
+    return os.path.join(xdg, "OBD-Toolkit", "Logs")
 
 
 DEFAULT_LOGS_DIR = _default_logs_dir()
@@ -1431,12 +1439,16 @@ if _HAVE_QT:
             run_bar.addWidget(QtWidgets.QLabel("Duration (s):"))
             self.dur_spin = QtWidgets.QSpinBox()
             self.dur_spin.setRange(1, live.MAX_SESSION_SECONDS)
-            self.dur_spin.setValue(60)
+            self.dur_spin.setValue(self.settings.value("live/duration", 60, type=int))
+            self.dur_spin.valueChanged.connect(
+                lambda v: self.settings.setValue("live/duration", v))
             run_bar.addWidget(self.dur_spin)
             run_bar.addWidget(QtWidgets.QLabel("Rate (Hz):"))
             self.rate_spin = QtWidgets.QDoubleSpinBox()
             self.rate_spin.setRange(0.5, 20.0)
-            self.rate_spin.setValue(5.0)
+            self.rate_spin.setValue(self.settings.value("live/rate", 5.0, type=float))
+            self.rate_spin.valueChanged.connect(
+                lambda v: self.settings.setValue("live/rate", v))
             run_bar.addWidget(self.rate_spin)
             run_bar.addWidget(QtWidgets.QLabel("Name:"))
             self.name_edit = QtWidgets.QLineEdit()
@@ -2121,7 +2133,7 @@ if _HAVE_QT:
     <p>VCDS saves logs to <code>C:\\Ross-Tech\\VCDS\\Logs</code> — the folder this
     app reads (shown in the status bar; override with the
     <code>VCDS_LOGS_DIR</code> environment variable). Then use
-    <b>Open&nbsp;Measuring&nbsp;CSV…</b> and <b>🔍&nbsp;Diagnose</b>.</p>
+    <b>Open&nbsp;Measuring&nbsp;CSV…</b> and <b>Diagnose</b>.</p>
     <p class="muted">Tip: a steady wide-open-throttle pull makes boost/power
     issues easiest to spot.</p>
     """
@@ -2168,7 +2180,7 @@ if _HAVE_QT:
       <li><b>Scan Ports</b>, pick your adapter's port (or type it), choose a baud
           (Auto, or 38400 / 9600 / 115200 for clones), then <b>Connect</b>.
           USB and <b>Bluetooth</b> adapters show up as a COM port (pair Bluetooth
-          first). For a <b>Wi-Fi</b> adapter, click <b>📶 Wi-Fi…</b> and enter its
+          first). For a <b>Wi-Fi</b> adapter, click <b>Wi-Fi…</b> and enter its
           address (commonly <code>192.168.0.10:35000</code>).</li>
       <li>The supported PIDs appear on the left &mdash; tick the ones to log.</li>
       <li><b>Read DTCs</b> shows stored trouble codes. <b>Clear DTCs…</b> erases
