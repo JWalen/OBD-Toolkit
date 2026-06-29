@@ -95,6 +95,18 @@ def test_fuel_economy_handles_misaligned_fuel_series(tmp_path):
     assert econ is not None and econ.fuel_l > 0 and econ.l_per_100km is not None
 
 
+def test_report_health_summary(tmp_path):
+    # An Auto-Scan with faults yields a "critical"/"attention" health triage.
+    rows = ["TIME,Engine RPM", "s,/min", "0,800", "0.5,820"]
+    p = tmp_path / "x.csv"
+    p.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    log = parse.parse_measuring_log(str(p))
+    report = diagnose(log=log, profile="vag")
+    h = report.health
+    assert h["status"] in ("good", "attention", "critical")
+    assert "headline" in h and isinstance(h["top"], list)
+
+
 def _cam_log(tmp_path, spec_name, act_name):
     rows = [f"TIME,{spec_name},{act_name}", "s,deg,deg"]
     for k in range(6):

@@ -62,6 +62,23 @@ class DiagnosticReport:
         n = len(self.findings)
         return f"{n} finding(s); most severe: {worst.severity.upper()} — {worst.title}"
 
+    @property
+    def health(self) -> dict:
+        """One-glance triage: overall status + the top few things to act on.
+
+        status is 'good' (nothing notable), 'attention' (medium/low only) or
+        'critical' (any high/critical finding)."""
+        counts = self.summary
+        if counts.get("critical", 0) or counts.get("high", 0):
+            status = "critical"
+        elif counts.get("medium", 0) or counts.get("low", 0):
+            status = "attention"
+        else:
+            status = "good"
+        top = [{"severity": f.severity, "title": f.title} for f in self.findings[:3]]
+        return {"status": status, "headline": self.headline,
+                "counts": {k: v for k, v in counts.items() if v}, "top": top}
+
 
 def _fault_findings(scan: AutoScan, profile: Profile) -> List[Finding]:
     out: List[Finding] = []

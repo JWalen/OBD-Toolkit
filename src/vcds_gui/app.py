@@ -634,8 +634,9 @@ if _HAVE_QT:
     # Files — open & analyze logs / Auto-Scans
     # --------------------------------------------------------------------- #
     class FileAnalyzerTab(QtWidgets.QWidget):
-        def __init__(self, parent=None):
+        def __init__(self, main_window=None, parent=None):
             super().__init__(parent)
+            self.main = main_window
             self.mlog: Optional[parse.MeasuringLog] = None
             self.scan = None
             self.rules: List[dict] = []
@@ -874,6 +875,8 @@ if _HAVE_QT:
             self.event_list.clear()
             self._refresh_data_view()
             self._update_actions()
+            if self.main is not None:
+                self.main.push_recent_file(path)
 
         def _update_actions(self):
             """Enable analysis/view actions only when the data they need is loaded."""
@@ -943,6 +946,8 @@ if _HAVE_QT:
                 self.scan_tree.addTopLevelItem(node)
                 node.setExpanded(True)
             self._update_actions()
+            if self.main is not None:
+                self.main.push_recent_file(path)
 
         def run_diagnosis(self):
             if self.mlog is None and self.scan is None:
@@ -950,9 +955,14 @@ if _HAVE_QT:
                     self, "Diagnose", "Open a measuring CSV and/or an Auto-Scan first."
                 )
                 return
-            prof = QtCore.QSettings("DeltaModTech", "VCDS Toolkit").value(
-                "ui/profile", profiles.DEFAULT_PROFILE, type=str)
+            prof = (self.main.current_profile() if self.main is not None
+                    else QtCore.QSettings("DeltaModTech", "VCDS Toolkit").value(
+                        "ui/profile", profiles.DEFAULT_PROFILE, type=str))
             report = run_diagnose(scan=self.scan, log=self.mlog, profile=prof)
+            # Feed the Dashboard's at-a-glance health card.
+            if self.main is not None:
+                self.main.last_report = report
+                self.main.dashboard.refresh()
             plot_png = None
             if self.mlog is not None:
                 try:
@@ -3198,6 +3208,9 @@ if _HAVE_QT:
                 return
             super().keyPressEvent(ev)
 
+    class _AiCancelled(Exception):
+        """Raised inside the AI worker when the user presses Stop."""
+
     class AiChatWorker(QtCore.QObject):
         done = QtCore.Signal(str)
         failed = QtCore.Signal(str)
@@ -3213,22 +3226,38 @@ if _HAVE_QT:
             self.messages = messages
             self.tools = tools
             self.executor = executor
+            self._cancel = False
+
+        def cancel(self):
+            """Cooperative stop: drop further output and end after the current read."""
+            self._cancel = True
 
         @QtCore.Slot()
         def run(self):
             ex = self.executor
 
             def wrapped(name, args):
+                if self._cancel:
+                    raise _AiCancelled()
                 self.tool.emit(name)
                 return ex(name, args) if ex else {}
+
+            def on_delta(chunk):
+                if self._cancel:
+                    raise _AiCancelled()  # unwinds the stream loop promptly
+                self.delta.emit(chunk)
 
             try:
                 reply = ai.chat(self.provider, self.key, self.model, self.system, self.messages,
                                 tools=self.tools, tool_executor=(wrapped if ex else None),
-                                on_delta=self.delta.emit)
-                self.done.emit(reply)
+                                on_delta=on_delta)
+                if not self._cancel:
+                    self.done.emit(reply)
+            except _AiCancelled:
+                pass  # user pressed Stop — the GUI already restored itself
             except Exception as exc:  # noqa: BLE001
-                self.failed.emit(str(exc))
+                if not self._cancel:
+                    self.failed.emit(str(exc))
 
     class SettingsDialog(QtWidgets.QDialog):
         """One place for theme, units, default profile, updates, AI and logs."""
@@ -3435,6 +3464,11 @@ if _HAVE_QT:
             self.btn_send = QtWidgets.QPushButton("Send")
             self.btn_send.setObjectName("Accent")
             entry.addWidget(self.btn_send)
+            self.btn_stop = QtWidgets.QPushButton("Stop")
+            self.btn_stop.setToolTip("Stop the in-flight AI response")
+            self.btn_stop.setVisible(False)
+            self.btn_stop.clicked.connect(self._stop_ai)
+            entry.addWidget(self.btn_stop)
             right.addLayout(entry)
             root.addLayout(right, 1)
 
@@ -3729,6 +3763,8 @@ if _HAVE_QT:
                 self._refresh_titles()
             self.input.clear()
             self.btn_send.setEnabled(False)
+            self.btn_send.setVisible(False)
+            self.btn_stop.setVisible(True)
             self._error = None
             self._stream_text = ""
             self._pending = "Assistant is typing…"
@@ -3789,7 +3825,7 @@ if _HAVE_QT:
             self._inflight = None
             self._stream_text = ""
             self._pending = None
-            self.btn_send.setEnabled(True)
+            self._idle_buttons()
             self._save_chats()
             if target is self.current:
                 self._render()
@@ -3800,11 +3836,35 @@ if _HAVE_QT:
             self._pending = None
             self._stream_text = ""
             self._error = msg
+            self._idle_buttons()
+            self._render()
+
+        def _idle_buttons(self):
             self.btn_send.setEnabled(True)
+            self.btn_send.setVisible(True)
+            self.btn_stop.setVisible(False)
+
+        def _stop_ai(self):
+            """Cancel the in-flight AI request and restore the composer."""
+            w = getattr(self, "_worker", None)
+            if w is not None and hasattr(w, "cancel"):
+                w.cancel()
+            self._shutdown()
+            self._inflight = None
+            self._pending = None
+            if self._stream_text:
+                # keep whatever streamed so far so the partial answer isn't lost
+                (getattr(self, "current", None) or {}).get("messages", []).append(
+                    {"role": "assistant", "content": self._stream_text + "\n\n_(stopped)_"})
+            self._stream_text = ""
+            self._idle_buttons()
             self._render()
 
         def _shutdown(self):
             """Stop an in-flight AI request so the app can close cleanly."""
+            w = getattr(self, "_worker", None)
+            if w is not None and hasattr(w, "cancel"):
+                w.cancel()
             t = getattr(self, "_thread", None)
             if t is not None and t.isRunning():
                 t.quit()
@@ -4344,6 +4404,10 @@ if _HAVE_QT:
             self.veh_body = QtWidgets.QLabel("—")
             self.veh_body.setWordWrap(True)
             vbody.addWidget(self.veh_body)
+            self.health_label = QtWidgets.QLabel("")
+            self.health_label.setWordWrap(True)
+            self.health_label.setVisible(False)
+            vbody.addWidget(self.health_label)
             self.maint_label = QtWidgets.QLabel("")
             self.maint_label.setWordWrap(True)
             self.maint_label.setVisible(False)
@@ -4446,10 +4510,28 @@ if _HAVE_QT:
                     f"<b style='color:#DD6B20'>Due soon:</b> {names}")
                 self.maint_label.setVisible(True)
 
+        def _show_health(self):
+            """At-a-glance health from the most recent diagnosis run."""
+            report = getattr(self.main, "last_report", None)
+            if report is None:
+                self.health_label.setVisible(False)
+                return
+            h = report.health
+            color = {"critical": "#E10600", "attention": "#DD6B20",
+                     "good": "#38A169"}.get(h["status"], "#969DA9")
+            label = {"critical": "Needs attention", "attention": "Minor items",
+                     "good": "Healthy"}.get(h["status"], h["status"].title())
+            parts = [f"<b style='color:{color}'>● {label}</b>"]
+            if h["top"]:
+                parts.append(" — " + "; ".join(t["title"] for t in h["top"]))
+            self.health_label.setText("Last diagnosis: " + "".join(parts))
+            self.health_label.setVisible(True)
+
         def refresh(self):
             # active vehicle
             vin = self.main.settings.value("garage/active_vin", "", type=str)
             self.maint_label.setVisible(False)
+            self._show_health()
             if vin:
                 veh = garage_mod.find(
                     garage_mod.load_garage(os.path.join(DEFAULT_LOGS_DIR, "garage.json")), vin)
@@ -4555,8 +4637,9 @@ if _HAVE_QT:
             h.addWidget(right, 1)
 
             self.settings = QtCore.QSettings("DeltaModTech", "VCDS Toolkit")
+            self.last_report = None  # most recent diagnosis (drives the Dashboard health card)
             self.dashboard = DashboardPage(self)
-            self.analyzer = FileAnalyzerTab()
+            self.analyzer = FileAnalyzerTab(self)
             self.live_tab = LiveTab(self)
             self.ai_tab = AiAssistantTab(self)
             self._page_index = {}
@@ -4598,6 +4681,19 @@ if _HAVE_QT:
             QtCore.QTimer.singleShot(1500, self._maybe_startup_update_check)
 
         def _build_menu(self):
+            file_menu = self.menuBar().addMenu("&File")
+            act_open = QtGui.QAction("&Open Measuring CSV…", self)
+            act_open.setShortcut("Ctrl+O")
+            act_open.triggered.connect(
+                lambda: (self.show_page("files"), self.analyzer.open_csv_dialog()))
+            file_menu.addAction(act_open)
+            act_scan = QtGui.QAction("Open &Auto-Scan…", self)
+            act_scan.triggered.connect(
+                lambda: (self.show_page("files"), self.analyzer.open_scan_dialog()))
+            file_menu.addAction(act_scan)
+            self.recent_menu = file_menu.addMenu("Open &Recent")
+            self._rebuild_recent_menu()
+
             view_menu = self.menuBar().addMenu("&View")
             self.act_dark = QtGui.QAction("&Dark mode", self)
             self.act_dark.setCheckable(True)
@@ -4830,6 +4926,50 @@ if _HAVE_QT:
             # falls back to the saved default.
             return getattr(self, "_active_profile", None) or self.settings.value(
                 "ui/profile", profiles.DEFAULT_PROFILE, type=str)
+
+        # -- recent files (MRU) -------------------------------------------- #
+        def _recent_files(self) -> list:
+            import json
+            try:
+                return [p for p in json.loads(self.settings.value("recent/files", "[]", type=str))
+                        if isinstance(p, str)]
+            except Exception:  # noqa: BLE001
+                return []
+
+        def push_recent_file(self, path: str):
+            """Record a just-opened file at the top of the MRU (deduped, capped)."""
+            import json
+            path = os.path.abspath(path)
+            mru = [p for p in self._recent_files() if os.path.normcase(p) != os.path.normcase(path)]
+            mru.insert(0, path)
+            self.settings.setValue("recent/files", json.dumps(mru[:12]))
+            self._rebuild_recent_menu()
+
+        def _rebuild_recent_menu(self):
+            menu = getattr(self, "recent_menu", None)
+            if menu is None:
+                return
+            menu.clear()
+            files = [p for p in self._recent_files() if os.path.isfile(p)]
+            if not files:
+                act = menu.addAction("(no recent files)")
+                act.setEnabled(False)
+                return
+            for p in files:
+                act = menu.addAction(os.path.basename(p))
+                act.setToolTip(p)
+                act.triggered.connect(lambda _c=False, path=p: self._open_recent_path(path))
+
+        def _open_recent_path(self, path: str):
+            if not os.path.isfile(path):
+                QtWidgets.QMessageBox.information(self, "Recent", "That file no longer exists.")
+                self._rebuild_recent_menu()
+                return
+            self.show_page("files")
+            if path.lower().endswith(".txt"):
+                self.analyzer.load_scan(path)
+            else:
+                self.analyzer.load_csv(path)
 
         def show_mcp_install(self):
             McpInstallDialog(DEFAULT_LOGS_DIR, self).exec()

@@ -379,6 +379,7 @@ def diagnose_file(filename: Optional[str] = None, autoscan: Optional[str] = None
         "vin": report.vin,
         "mileage": report.mileage,
         "headline": report.headline,
+        "health": report.health,
         "summary": report.summary,
         "findings": [_finding_dict(f) for f in report.findings],
         "notes": report.notes,

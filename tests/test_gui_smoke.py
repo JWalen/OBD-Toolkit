@@ -320,6 +320,48 @@ def test_onboarding_uses_sidebar_terms_not_tabs():
     assert "OBD Toolkit" in joined and "VCDS Toolkit" not in joined
 
 
+def test_recent_files_mru(qapp, tmp_path, monkeypatch):
+    monkeypatch.setattr(gui_app, "DEFAULT_LOGS_DIR", str(tmp_path))
+    win = gui_app.MainWindow()
+    win.settings.setValue("recent/files", "[]")
+    a = tmp_path / "a.csv"; a.write_text("x", encoding="utf-8")
+    b = tmp_path / "b.csv"; b.write_text("x", encoding="utf-8")
+    win.push_recent_file(str(a))
+    win.push_recent_file(str(b))
+    win.push_recent_file(str(a))  # re-open a -> moves to top, no duplicate
+    mru = win._recent_files()
+    assert mru[0] == os.path.abspath(str(a))
+    assert mru.count(os.path.abspath(str(a))) == 1 and os.path.abspath(str(b)) in mru
+    win.settings.setValue("recent/files", "[]")
+    win.close()
+
+
+def test_ai_stop_button_toggles(qapp):
+    win = gui_app.MainWindow()
+    tab = win.ai_tab
+    assert tab.btn_stop is not None and tab.btn_stop.isHidden()
+    # Simulate an in-flight request, then idle restores Send.
+    tab.btn_send.setVisible(False)
+    tab.btn_stop.setVisible(True)
+    tab._idle_buttons()
+    assert not tab.btn_send.isHidden() and tab.btn_stop.isHidden()
+    win.close()
+
+
+def test_dashboard_health_card(qapp, tmp_path, monkeypatch):
+    from vcds_core import parse as _parse
+    from vcds_core.diagnose import diagnose as _diag
+    monkeypatch.setattr(gui_app, "DEFAULT_LOGS_DIR", str(tmp_path))
+    win = gui_app.MainWindow()
+    rows = ["TIME,Engine RPM", "s,/min", "0,800", "0.5,820"]
+    p = tmp_path / "h.csv"
+    p.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    win.last_report = _diag(log=_parse.parse_measuring_log(str(p)), profile="vag")
+    win.dashboard.refresh()  # should populate (or hide) the health card without error
+    assert win.dashboard.health_label is not None
+    win.close()
+
+
 def test_gauge_peak_hold(qapp):
     from vcds_obd import live
     chans = live.build_channels({"RPM"})

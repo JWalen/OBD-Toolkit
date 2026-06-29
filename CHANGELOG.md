@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.39.0] - 2026-06-29
+
+### Added
+- **At-a-glance vehicle health on the Dashboard.** After you run a diagnosis, the
+  active-vehicle card shows an overall status — green **Healthy**, amber **Minor
+  items**, or red **Needs attention** — with the top findings. The MCP
+  `diagnose_file` tool returns the same `health` triage.
+- **Stop button for the AI assistant.** Cancel an in-flight response; whatever has
+  streamed so far is kept (marked "stopped").
+- **Open Recent.** A File ▸ Open Recent menu (and Ctrl+O to open a measuring CSV)
+  tracks the last dozen logs/scans you opened, from anywhere on disk.
+
+### Notes
+- The shareable diagnostic **report export (HTML/PDF)** is available from the
+  Diagnosis dialog's **Save Report…** button.
+
 ## [1.38.0] - 2026-06-29
 
 ### Added — Diagnostics
@@ -906,7 +922,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/OBD-Toolkit/compare/v1.38.0...HEAD
+[Unreleased]: https://github.com/JWalen/OBD-Toolkit/compare/v1.39.0...HEAD
+[1.39.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.39.0
 [1.38.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.38.0
 [1.37.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.37.0
 [1.36.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.36.0
