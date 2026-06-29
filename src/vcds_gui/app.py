@@ -1819,17 +1819,22 @@ if _HAVE_QT:
             self.dtc_tree.clear()
             try:
                 with _Busy(self.conn_status, "Reading DTCs…"):
-                    dtcs = live.read_dtcs(self.conn)
+                    dtcs = live.read_dtcs_detailed(self.conn)
             except Exception as exc:  # noqa: BLE001
                 self.dtc_tree.addTopLevelItem(QtWidgets.QTreeWidgetItem([f"Error: {exc}", ""]))
                 return
             if not dtcs:
                 self.dtc_tree.addTopLevelItem(QtWidgets.QTreeWidgetItem(["No stored DTCs.", ""]))
                 return
-            for code, desc in dtcs:
+            for code, desc, status in dtcs:
                 k = knowledge.lookup(code)
-                node = QtWidgets.QTreeWidgetItem([f"{code} — {desc or k.description}", k.severity.upper()])
+                pending = " (pending)" if status == "pending" else ""
+                node = QtWidgets.QTreeWidgetItem(
+                    [f"{code}{pending} — {desc or k.description}", k.severity.upper()])
                 node.setForeground(1, QtGui.QColor(_SEVERITY_COLORS.get(k.severity, "#000000")))
+                if status == "pending":
+                    node.setToolTip(0, "Pending: detected this drive cycle but not yet "
+                                       "confirmed/matured into a stored fault.")
                 font = node.font(0)
                 font.setBold(True)
                 node.setFont(0, font)

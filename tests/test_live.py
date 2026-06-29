@@ -151,12 +151,65 @@ def test_new_dtc_trigger_fires(tmp_path):
 
     assert any(c.trigger_kind == "dtc" for c in result.captures)
     assert ("P0301", "Cylinder 1 Misfire Detected") in result.dtcs
+    # The DTC capture records the engine conditions at the trigger instant.
+    dtc_cap = next(c for c in result.captures if c.trigger_kind == "dtc")
+    assert dtc_cap.conditions and "Engine RPM" in dtc_cap.conditions
+    # Conditions are embedded in the capture file as a comment header.
+    text = open(dtc_cap.file, encoding="utf-8").read()
+    assert "Conditions at trigger:" in text
 
 
 def test_read_dtcs_surfaces_codes(tmp_path):
     conn = FakeOBD(dtc_at=-1)  # report immediately
     dtcs = live.read_dtcs(conn)
     assert dtcs == [("P0301", "Cylinder 1 Misfire Detected")]
+
+
+def test_read_dtcs_detailed_falls_back_to_stored():
+    # A connection without get_dtcs_detailed (like FakeOBD) tags everything stored.
+    conn = FakeOBD(dtc_at=-1)
+    detailed = live.read_dtcs_detailed(conn)
+    assert detailed == [("P0301", "Cylinder 1 Misfire Detected", "stored")]
+
+
+def test_pyobd_splits_stored_and_pending():
+    # mode 03 (GET_DTC) -> stored; mode 07 (GET_CURRENT_DTC) -> pending.
+    class _Resp:
+        def __init__(self, value):
+            self.value = value
+
+        def is_null(self):
+            return not self.value
+
+    class _Cmd:
+        def __init__(self, name):
+            self.name = name
+
+    class _Cmds:
+        GET_DTC = _Cmd("GET_DTC")
+        GET_CURRENT_DTC = _Cmd("GET_CURRENT_DTC")
+
+    class _Conn:
+        def query(self, cmd, force=False):
+            if cmd.name == "GET_DTC":
+                return _Resp([("P0420", "Catalyst")])
+            return _Resp([("P0171", "System Too Lean")])
+
+        def close(self):
+            pass
+
+    class _Obd:
+        commands = _Cmds()
+
+        class OBD:
+            @staticmethod
+            def query(conn, cmd, force=False):
+                return conn.query(cmd, force=force)
+
+    conn = live.PyOBDConnection(conn=_Conn(), obd_module=_Obd, is_async=False)
+    detailed = conn.get_dtcs_detailed()
+    assert ("P0420", "Catalyst", "stored") in detailed
+    assert ("P0171", "System Too Lean", "pending") in detailed
 
 
 def test_snapshot_returns_supported_values(tmp_path):

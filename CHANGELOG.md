@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.38.0] - 2026-06-29
+
+### Added — Diagnostics
+- **Freeze-frame capture on a mid-session DTC.** When a new trouble code fires
+  during a recording, the event capture now records the **engine conditions at the
+  trigger instant** and, where the adapter supports it, the ECU's **mode-02 freeze
+  frame** — both embedded in the capture file's header and exposed to the MCP/AI.
+  This is the highest-signal data for chasing an intermittent fault.
+- **Stored vs pending DTCs are now distinguished.** Read DTCs marks **pending**
+  codes (detected this drive cycle but not yet matured into a stored fault) with a
+  "(pending)" tag and tooltip; the MCP `read_live_dtcs` tool returns separate
+  `stored` and `pending` lists.
+
 ## [1.37.0] - 2026-06-28
 
 ### Added — Gauges
@@ -893,7 +906,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/OBD-Toolkit/compare/v1.37.0...HEAD
+[Unreleased]: https://github.com/JWalen/OBD-Toolkit/compare/v1.38.0...HEAD
+[1.38.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.38.0
 [1.37.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.37.0
 [1.36.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.36.0
 [1.35.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.35.0

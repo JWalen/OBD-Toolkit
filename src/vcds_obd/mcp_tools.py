@@ -57,19 +57,23 @@ def read_live_dtcs_impl(logs_dir: str, port: Optional[str] = None) -> dict:
     except Exception as exc:  # noqa: BLE001
         return {"connected": False, "error": f"No ELM327 adapter: {exc}", "dtcs": []}
     try:
-        dtcs = live.read_dtcs(conn)
+        dtcs = live.read_dtcs_detailed(conn)
         out = []
-        for code, desc in dtcs:
+        for code, desc, status in dtcs:
             k = knowledge.lookup(code)
             out.append({
                 "code": code,
                 "description": desc or k.description,
+                "status": status,  # "stored" or "pending"
                 "severity": k.severity,
                 "system": k.system,
                 "likely_causes": k.causes,
                 "notes": k.notes,
             })
-        return {"connected": True, "count": len(out), "dtcs": out}
+        stored = [d for d in out if d["status"] == "stored"]
+        pending = [d for d in out if d["status"] == "pending"]
+        return {"connected": True, "count": len(out), "dtcs": out,
+                "stored": stored, "pending": pending}
     finally:
         _close(conn)
 
@@ -194,6 +198,8 @@ def run_obd_session_impl(
                     "trigger_kind": cap.trigger_kind,
                     "trigger_time": cap.trigger_time,
                     "reason": cap.reason,
+                    "conditions": cap.conditions or {},
+                    "freeze_frame": cap.freeze_frame or {},
                 }
                 for cap in result.captures
             ],

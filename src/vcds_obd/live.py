@@ -304,6 +304,10 @@ class CaptureResult:
     trigger_kind: str  # "dtc" or "threshold"
     trigger_time: float
     reason: str
+    # Engine conditions at the moment the trigger fired (always captured), plus
+    # the ECU's stored mode-02 freeze frame for a DTC trigger when available.
+    conditions: Optional[dict] = None
+    freeze_frame: Optional[dict] = None
 
 
 @dataclass
@@ -450,11 +454,19 @@ class LiveLogger:
                     cap_rows = list(ring)  # buffer_before context
                     cap_end = t + self.buffer_after_s
                     cap_name = f"{session_name}_EVENT{len(captures) + 1}_{fired_kind}.CSV"
+                    # Snapshot the engine conditions at the trigger instant; for a
+                    # DTC, also grab the ECU's mode-02 freeze frame when available.
+                    conditions = {k: v for k, v in values.items() if v is not None}
+                    freeze = None
+                    if fired_kind == "dtc":
+                        freeze = self._safe_freeze_frame()
                     cap_info = CaptureResult(
                         file=os.path.join(self.logs_dir, cap_name),
                         trigger_kind=fired_kind,
                         trigger_time=t,
                         reason=fired_reason,
+                        conditions=conditions,
+                        freeze_frame=freeze or None,
                     )
 
                 row = (marker, t, values)
@@ -465,7 +477,8 @@ class LiveLogger:
                 if cap_rows is not None:
                     cap_rows.append(row)
                     if t >= cap_end:
-                        write_measuring_csv(cap_info.file, self.channels, cap_rows, self.header_lines)  # type: ignore[arg-type]
+                        write_measuring_csv(cap_info.file, self.channels, cap_rows,
+                                            self._capture_header(cap_info))  # type: ignore[arg-type]
                         captures.append(cap_info)  # type: ignore[arg-type]
                         cap_rows = None
                         cap_info = None
@@ -479,7 +492,8 @@ class LiveLogger:
         # finalize an in-progress capture (session ended before buffer_after elapsed)
         if cap_rows is not None and cap_info is not None:
             try:
-                write_measuring_csv(cap_info.file, self.channels, cap_rows, self.header_lines)
+                write_measuring_csv(cap_info.file, self.channels, cap_rows,
+                                    self._capture_header(cap_info))
                 captures.append(cap_info)
             except OSError as exc:  # a capture-write fault must not lose the session
                 run_error = run_error or f"capture write failed: {exc}"
@@ -516,10 +530,39 @@ class LiveLogger:
         except Exception:  # noqa: BLE001 - DTC reads can fail mid-session
             return []
 
+    def _safe_freeze_frame(self) -> dict:
+        try:
+            fn = getattr(self.conn, "read_freeze_frame", None)
+            return dict(fn()) if fn else {}
+        except Exception:  # noqa: BLE001 - freeze-frame reads are best-effort
+            return {}
+
+    def _capture_header(self, cap: "CaptureResult") -> List[str]:
+        """Vehicle header + the trigger reason, conditions and freeze frame,
+        embedded as ``#`` comment lines the parser ignores."""
+        lines = list(self.header_lines)
+        lines.append(f"Trigger: {cap.reason}")
+        if cap.conditions:
+            cond = ", ".join(f"{k}={v:g}" for k, v in cap.conditions.items())
+            lines.append(f"Conditions at trigger: {cond}")
+        if cap.freeze_frame:
+            ff = ", ".join(f"{k}={v:g}" for k, v in cap.freeze_frame.items())
+            lines.append(f"Freeze frame (mode 02): {ff}")
+        return lines
+
 
 def read_dtcs(conn: Connection) -> List[Tuple[str, str]]:
     """Return current stored DTCs as (code, description) tuples."""
     return list(conn.get_dtcs())
+
+
+def read_dtcs_detailed(conn: Connection) -> List[Tuple[str, str, str]]:
+    """Return DTCs as (code, description, status) — status is 'stored' or
+    'pending'. Falls back to tagging everything 'stored' on older connections."""
+    fn = getattr(conn, "get_dtcs_detailed", None)
+    if fn is not None:
+        return list(fn())
+    return [(c, d, "stored") for c, d in conn.get_dtcs()]
 
 
 def snapshot(conn: Connection, channels: Optional[Sequence[LiveChannel]] = None) -> Dict[str, Optional[float]]:
@@ -683,9 +726,14 @@ class PyOBDConnection:
 
     def get_dtcs(self) -> List[Tuple[str, str]]:
         """Read stored (mode 03) and pending (mode 07) DTCs, de-duplicated."""
-        out: List[Tuple[str, str]] = []
-        seen = set()
-        for name in ("GET_DTC", "GET_CURRENT_DTC"):
+        return [(c, d) for c, d, _ in self.get_dtcs_detailed()]
+
+    def get_dtcs_detailed(self) -> List[Tuple[str, str, str]]:
+        """Like get_dtcs but tags each code 'stored' (mode 03) or 'pending'
+        (mode 07 only). A pending code hasn't matured into a stored fault yet."""
+        out: List[Tuple[str, str, str]] = []
+        seen: dict = {}
+        for name, status in (("GET_DTC", "stored"), ("GET_CURRENT_DTC", "pending")):
             cmd = getattr(self._obd.commands, name, None)
             resp = self._one_shot(cmd)
             if resp is None or resp.is_null() or not resp.value:
@@ -693,9 +741,38 @@ class PyOBDConnection:
             for code, desc in resp.value:
                 key = str(code)
                 if key in seen:
-                    continue
-                seen.add(key)
-                out.append((str(code), str(desc)))
+                    continue  # stored wins (read first) over pending
+                seen[key] = True
+                out.append((str(code), str(desc), status))
+        return out
+
+    # Mode-02 freeze frame: the ECU's stored snapshot of common PIDs at the time
+    # a DTC was set. python-OBD mirrors mode-01 PIDs under commands.mode02.
+    _FREEZE_PIDS = ("RPM", "ENGINE_LOAD", "COOLANT_TEMP", "SPEED",
+                    "INTAKE_PRESSURE", "MAF", "THROTTLE_POS", "SHORT_FUEL_TRIM_1",
+                    "LONG_FUEL_TRIM_1", "TIMING_ADVANCE")
+
+    def read_freeze_frame(self) -> dict:
+        """Best-effort mode-02 freeze frame for the common PIDs (frame 0)."""
+        mode02 = getattr(self._obd.commands, "mode02", None)
+        if mode02 is None:
+            return {}
+        out: dict = {}
+        for name in self._FREEZE_PIDS:
+            cmd = None
+            try:
+                base = getattr(self._obd.commands, name, None)
+                if base is not None and base.pid is not None and base.pid < len(mode02):
+                    cmd = mode02[base.pid]
+            except Exception:  # noqa: BLE001
+                cmd = None
+            if cmd is None:
+                continue
+            resp = self._one_shot(cmd)
+            if resp is not None and not resp.is_null():
+                v = _strip(resp.value)
+                if v is not None:
+                    out[name] = v
         return out
 
     def query_raw(self, request_hex: str) -> List[int]:
@@ -1025,16 +1102,29 @@ class RawELM327Connection:
         )
 
     def get_dtcs(self) -> List[Tuple[str, str]]:
-        toks = self._hex_bytes(self._transact("03"))
-        out: List[Tuple[str, str]] = []
-        if 0x43 in toks:
-            i = toks.index(0x43) + 1
-            pairs = toks[i:]
+        return [(c, d) for c, d, _ in self.get_dtcs_detailed()]
+
+    def _parse_dtc_response(self, resp: str, resp_byte: int) -> List[str]:
+        toks = self._hex_bytes(resp)
+        out: List[str] = []
+        if resp_byte in toks:
+            pairs = toks[toks.index(resp_byte) + 1:]
             for j in range(0, len(pairs) - 1, 2):
                 b1, b2 = pairs[j], pairs[j + 1]
                 if b1 == 0 and b2 == 0:
                     continue
-                out.append((self._decode_dtc(b1, b2), ""))
+                out.append(self._decode_dtc(b1, b2))
+        return out
+
+    def get_dtcs_detailed(self) -> List[Tuple[str, str, str]]:
+        out: List[Tuple[str, str, str]] = []
+        seen = set()
+        for req, resp_byte, status in (("03", 0x43, "stored"), ("07", 0x47, "pending")):
+            for code in self._parse_dtc_response(self._transact(req), resp_byte):
+                if code in seen:
+                    continue
+                seen.add(code)
+                out.append((code, "", status))
         return out
 
     def clear_dtcs(self) -> bool:
