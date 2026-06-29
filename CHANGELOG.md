@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.37.0] - 2026-06-28
+
+### Added — Gauges
+- **Peak hold.** Each gauge now latches the session **peak** (and **min** for
+  low-side gauges like oil pressure) with a ghost marker and a "Peak: x" readout —
+  great for catching peak boost or spotting a boost leak. Right-click a gauge to
+  toggle peak hold; a **Reset peaks** button clears them all. The preference is saved
+  per channel.
+- **Free-running gauges.** The Gauges window now streams on its own poller as soon
+  as you're connected — no need to start a recording. When you do record, it follows
+  the recording's sample stream and resumes free-running when the recording stops.
+
 ## [1.36.0] - 2026-06-28
 
 ### Changed
@@ -881,7 +893,8 @@ First public release.
   installer, and publishes a GitHub Release on each `v*` tag.
 - 54-test pytest suite (no hardware; the live path is mocked).
 
-[Unreleased]: https://github.com/JWalen/OBD-Toolkit/compare/v1.36.0...HEAD
+[Unreleased]: https://github.com/JWalen/OBD-Toolkit/compare/v1.37.0...HEAD
+[1.37.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.37.0
 [1.36.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.36.0
 [1.35.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.35.0
 [1.34.0]: https://github.com/JWalen/OBD-Toolkit/releases/tag/v1.34.0

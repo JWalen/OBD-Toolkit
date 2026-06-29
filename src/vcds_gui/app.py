@@ -1898,10 +1898,12 @@ if _HAVE_QT:
             # Don't start a recording while identify() is still reading the port.
             self._wait_thread(getattr(self, "_id_thread", None), 2000)
             # The logger owns the connection during a session — pause the
-            # free-running Live Data poller; it'll update from the sample stream.
+            # free-running pop-out pollers; they'll update from the sample stream.
             if self._livedata is not None:
                 self._livedata.stop_poll()
                 self._livedata.status.setText("Streaming from the active recording…")
+            if self._gauges is not None:
+                self._gauges.stop_poll()
             channels = self._selected_channels()
             if getattr(self.conn, "is_async", False):
                 self.conn.rewatch([ch.command_name for ch in channels if ch.command_name])
@@ -1961,9 +1963,15 @@ if _HAVE_QT:
                 return
             system = self.settings.value("ui/units", units.AS_LOGGED, type=str)
             if self._gauges is not None:
+                self._gauges.stop_poll()
                 self._gauges.close()      # don't leak the previous gauge window
             self._gauges = GaugeWindow(channels, system, self)
             self._gauges.set_thresholds(self.trigger_rules)
+            # Free-run off its own poller unless a recording owns the connection.
+            if self.conn is not None and (self.logger is None or not self.btn_stop.isEnabled()):
+                if getattr(self.conn, "is_async", False):
+                    self.conn.rewatch([c.command_name for c in channels if c.command_name])
+                self._gauges.start_poll(self.conn)
             self._gauges.show()
 
         def open_live_data(self):
@@ -2060,6 +2068,9 @@ if _HAVE_QT:
             if (self._livedata is not None and self._livedata.isVisible()
                     and self.conn is not None):
                 self._livedata.start_poll(self.conn)
+            if (self._gauges is not None and self._gauges.isVisible()
+                    and self.conn is not None):
+                self._gauges.start_poll(self.conn)
 
         @QtCore.Slot(object)
         def _on_finished(self, result):
@@ -2855,17 +2866,38 @@ if _HAVE_QT:
             self.vmax = vmax
             self.system = system
             self.value = None
+            self.peak = None       # session max (ghost marker / "Peak:")
+            self.trough = None     # session min (for low-side gauges)
+            self.peak_hold = True
             self.warn = None
             self.crit = None       # high-side critical bound
             self.crit_lo = None    # low-side critical bound (e.g. oil pressure < x)
-            self.setMinimumSize(190, 150)
+            self.setMinimumSize(190, 160)
             self.setFrameShape(QtWidgets.QFrame.StyledPanel)
             self.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
             self.customContextMenuRequested.connect(self._menu)
 
         def set_value(self, value):
             self.value = value
+            if value is not None:
+                self.peak = value if self.peak is None else max(self.peak, value)
+                self.trough = value if self.trough is None else min(self.trough, value)
             self.update()
+
+        def reset_peak(self):
+            self.peak = self.trough = self.value
+            self.update()
+
+        def _frac_of(self, value):
+            """Fraction (0..1) of a raw value across the converted range."""
+            if value is None or self.vmax == self.vmin:
+                return None
+            v, _ = units.convert(value, self.unit, self.system)
+            lo, _ = units.convert(self.vmin, self.unit, self.system)
+            hi, _ = units.convert(self.vmax, self.unit, self.system)
+            if hi == lo:
+                return None
+            return max(0.0, min(1.0, (v - lo) / (hi - lo)))
 
         def _color(self):
             ok = QtGui.QColor(active_tokens().get("accent", "#0066CC"))  # theme accent
@@ -2880,17 +2912,14 @@ if _HAVE_QT:
             return ok
 
         def _frac(self):
-            if self.value is None or self.vmax == self.vmin:
-                return None
             # Convert value AND the range bounds into the display system so the
             # needle/bar fill matches the converted number printed on the face
             # (otherwise °C↔°F offset and unit scaling make them disagree).
-            v, _ = units.convert(self.value, self.unit, self.system)
-            lo, _ = units.convert(self.vmin, self.unit, self.system)
-            hi, _ = units.convert(self.vmax, self.unit, self.system)
-            if hi == lo:
-                return None
-            return max(0.0, min(1.0, (v - lo) / (hi - lo)))
+            return self._frac_of(self.value)
+
+        def _peak_value(self):
+            """The held extreme to mark: trough for a low-side gauge, else peak."""
+            return self.trough if self.crit_lo is not None else self.peak
 
         # -- customization -------------------------------------------------- #
         def _menu(self, pos):
@@ -2901,8 +2930,20 @@ if _HAVE_QT:
                 act.setChecked(self.kind == kind)
                 act.triggered.connect(lambda _c, k=kind: self._set_kind(k))
             m.addSeparator()
+            ph = m.addAction("Peak hold")
+            ph.setCheckable(True)
+            ph.setChecked(self.peak_hold)
+            ph.triggered.connect(self._toggle_peak)
+            m.addAction("Reset peak").triggered.connect(self.reset_peak)
             m.addAction("Set range…").triggered.connect(self._set_range)
             m.exec(self.mapToGlobal(pos))
+
+        def _toggle_peak(self, on):
+            self.peak_hold = on
+            if not on:
+                self.peak = self.trough = self.value
+            self.update()
+            self.changed.emit(self.name)
 
         def _set_kind(self, kind):
             self.kind = kind
@@ -2949,6 +2990,15 @@ if _HAVE_QT:
                 arc = QtCore.QRectF(cx - rad, cy - rad, 2 * rad, 2 * rad)
                 p.setPen(QtGui.QPen(muted, 3))
                 p.drawArc(arc, 225 * 16, -270 * 16)
+                # ghost peak tick on the arc
+                if self.peak_hold:
+                    pf = self._frac_of(self._peak_value())
+                    if pf is not None:
+                        pa = math.radians(225 - 270 * pf)
+                        ox, oy = cx + rad * math.cos(pa), cy - rad * math.sin(pa)
+                        ix, iy = cx + rad * 0.7 * math.cos(pa), cy - rad * 0.7 * math.sin(pa)
+                        p.setPen(QtGui.QPen(QtGui.QColor("#DD6B20"), 2))
+                        p.drawLine(QtCore.QPointF(ix, iy), QtCore.QPointF(ox, oy))
                 fr = self._frac()
                 if fr is not None:
                     ang = math.radians(225 - 270 * fr)
@@ -2962,6 +3012,16 @@ if _HAVE_QT:
                 p.setFont(font)
                 p.drawText(QtCore.QRectF(r.left(), cy + rad * 0.5, r.width(), 24),
                            QtCore.Qt.AlignHCenter, vtxt)
+                pv = self._peak_value()
+                if self.peak_hold and pv is not None:
+                    pdisp = units.convert(pv, self.unit, self.system)[0]
+                    p.setPen(QtGui.QColor("#DD6B20"))
+                    font.setPointSize(8)
+                    font.setBold(False)
+                    p.setFont(font)
+                    lbl = "Min" if self.crit_lo is not None else "Peak"
+                    p.drawText(QtCore.QRectF(r.left(), cy + rad * 0.5 + 22, r.width(), 14),
+                               QtCore.Qt.AlignHCenter, f"{lbl}: {pdisp:g}")
             elif self.kind == "bar":
                 bar = QtCore.QRectF(r.left(), r.center().y() - 14, r.width(), 28)
                 p.setPen(QtGui.QPen(muted, 1))
@@ -2974,6 +3034,12 @@ if _HAVE_QT:
                     p.setBrush(self._color())
                     p.setPen(QtCore.Qt.NoPen)
                     p.drawRoundedRect(fill, 4, 4)
+                if self.peak_hold:
+                    pf = self._frac_of(self._peak_value())
+                    if pf is not None:
+                        px = bar.left() + 1 + (bar.width() - 2) * pf
+                        p.setPen(QtGui.QPen(QtGui.QColor("#DD6B20"), 2))
+                        p.drawLine(QtCore.QPointF(px, bar.top()), QtCore.QPointF(px, bar.bottom()))
                 p.setPen(fg)
                 font.setPointSize(13)
                 font.setBold(True)
@@ -2992,12 +3058,26 @@ if _HAVE_QT:
             super().__init__(parent)
             self.setWindowTitle("Live Gauges")
             self.setWindowFlag(QtCore.Qt.Window)
-            self.resize(720, 420)
+            icon = _find_app_icon()
+            if icon:
+                self.setWindowIcon(QtGui.QIcon(icon))
+            self.resize(720, 440)
             self.settings = QtCore.QSettings("DeltaModTech", "VCDS Toolkit")
+            self._channels = list(channels)
+            self._poller = None
+            self._thread = None
             outer = QtWidgets.QVBoxLayout(self)
-            outer.addWidget(QtWidgets.QLabel(
-                "<span style='color:#718096'>Right-click a gauge to change its type "
-                "(needle / bar / numeric) or range.</span>"))
+
+            bar = QtWidgets.QHBoxLayout()
+            self.status = QtWidgets.QLabel("Right-click a gauge to change its type or range.")
+            self.status.setObjectName("Muted")
+            bar.addWidget(self.status, 1)
+            self.btn_reset = QtWidgets.QPushButton("Reset peaks")
+            self.btn_reset.setToolTip("Clear the held peak/min markers on every gauge")
+            self.btn_reset.clicked.connect(self.reset_peaks)
+            bar.addWidget(self.btn_reset)
+            outer.addLayout(bar)
+
             scroll = QtWidgets.QScrollArea()
             scroll.setWidgetResizable(True)
             inner = QtWidgets.QWidget()
@@ -3010,9 +3090,38 @@ if _HAVE_QT:
             for i, ch in enumerate(channels):
                 kind, lo, hi = self._config_for(ch)
                 g = Gauge(ch.name, ch.unit, kind, lo, hi, system)
+                g.peak_hold = self._peak_hold_for(ch.name)
                 g.changed.connect(self._save_config)
                 self.gauges[ch.name] = g
                 grid.addWidget(g, i // cols, i % cols)
+
+        def reset_peaks(self):
+            for g in self.gauges.values():
+                g.reset_peak()
+
+        def start_poll(self, conn):
+            """Free-run the gauges off their own poller (when not recording)."""
+            self.stop_poll()
+            self._thread = QtCore.QThread()
+            self._poller = LiveDataPoller(conn, self._channels, 100)
+            self._poller.moveToThread(self._thread)
+            self._thread.started.connect(self._poller.run)
+            self._poller.values.connect(self.update_values)
+            self._poller.failed.connect(lambda m: self.status.setText(f"Stopped: {m}"))
+            self._thread.start()
+            self.status.setText("Streaming live…")
+
+        def stop_poll(self):
+            if self._poller is not None:
+                self._poller.stop()
+            if self._thread is not None:
+                self._thread.quit()
+                self._thread.wait(1500)
+            self._poller = self._thread = None
+
+        def closeEvent(self, event):
+            self.stop_poll()
+            super().closeEvent(event)
 
         def _config_for(self, ch):
             kind, lo, hi = _auto_gauge(ch.name, ch.unit)
@@ -3026,13 +3135,24 @@ if _HAVE_QT:
                     pass
             return kind, lo, hi
 
+        def _peak_hold_for(self, ch_name) -> bool:
+            raw = self.settings.value(f"gauge/{ch_name}", "", type=str)
+            if raw:
+                try:
+                    import json
+                    return bool(json.loads(raw).get("peak_hold", True))
+                except Exception:  # noqa: BLE001
+                    pass
+            return True
+
         def _save_config(self, name):
             import json
             g = self.gauges.get(name)
             if g is None:
                 return
             self.settings.setValue(
-                f"gauge/{name}", json.dumps({"kind": g.kind, "min": g.vmin, "max": g.vmax}))
+                f"gauge/{name}", json.dumps(
+                    {"kind": g.kind, "min": g.vmin, "max": g.vmax, "peak_hold": g.peak_hold}))
 
         def set_thresholds(self, rules):
             for name, g in self.gauges.items():

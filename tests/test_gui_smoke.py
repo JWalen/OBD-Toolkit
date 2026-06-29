@@ -320,6 +320,21 @@ def test_onboarding_uses_sidebar_terms_not_tabs():
     assert "OBD Toolkit" in joined and "VCDS Toolkit" not in joined
 
 
+def test_gauge_peak_hold(qapp):
+    from vcds_obd import live
+    chans = live.build_channels({"RPM"})
+    g = gui_app.GaugeWindow(chans, gui_app.units.AS_LOGGED)
+    name = next(iter(g.gauges))
+    gauge = g.gauges[name]
+    gauge.set_value(1000.0)
+    gauge.set_value(3000.0)
+    gauge.set_value(1500.0)
+    assert gauge.peak == 3000.0 and gauge.trough == 1000.0  # extremes latched
+    g.reset_peaks()
+    assert gauge.peak == 1500.0 and gauge.trough == 1500.0   # reset to current
+    g.close()
+
+
 def test_gauge_low_side_threshold_colors_red(qapp):
     from vcds_obd import live
     chans = live.build_channels({"RPM"})
